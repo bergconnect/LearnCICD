@@ -22,7 +22,9 @@ jobs:
         run: dotnet build -c Release --no-restore /p:TreatWarningsAsErrors=true
 
       - name: Test with coverage
-        run: dotnet test -c Release --no-build --coverage --coverage-output-format cobertura
+        run: >
+          dotnet test -c Release --no-build
+          --coverage --coverage-output-format cobertura
 
       - name: Upload coverage report
         if: always()
