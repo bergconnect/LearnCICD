@@ -4,7 +4,7 @@ COPY src/Api/Api.csproj src/Api/
 RUN dotnet restore src/Api/Api.csproj
 COPY src/Api/ src/Api/
 WORKDIR /src/src/Api
-RUN dotnet publish -c Release -o /app/publish --no-restore
+RUN dotnet publish -c Release -o /app/publish --no-restore /p:TreatWarningsAsErrors=true
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS final
 WORKDIR /app
