@@ -15,10 +15,10 @@ public class HealthEndpointTests : IClassFixture<WebApplicationFactory<Program>>
     [Fact]
     public async Task GetHealth_ReturnsOkWithHealthyBody()
     {
-        var response = await _client.GetAsync("/health");
+        var response = await _client.GetAsync("/health", TestContext.Current.CancellationToken);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        var body = await response.Content.ReadAsStringAsync();
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("Healthy", body);
     }
 }
