@@ -17,7 +17,7 @@ Van VSTest naar MTP-native xunit v3:
 
 ## 2. Testcode + `global.json`
 
-- **Testcode** (`tests/Api.Tests/HealthEndpointTests.cs`): functioneel ongewijzigd. `[Fact]`, `IClassFixture<WebApplicationFactory<Program>>`, `HttpClient` en de asserts (`Assert.Equal`, `Assert.Contains`) bestaan in xunit v3 onder dezelfde namen; zelfde endpoint, zelfde eis (`200` + `Healthy`). Alleen usings/namespace-afstemming als de compiler dat eist — implementatie wijst uit of er nul of enkele regels wijzigen.
+- **Testcode** (`tests/Api.Tests/HealthEndpointTests.cs`): functioneel ongewijzigd (zelfde endpoint, zelfde eis `200` + `Healthy`), maar twee regels wijzigen verplicht: de xunit-v3-analyzerregel xUnit1051 eist `TestContext.Current.CancellationToken` bij `GetAsync` en `ReadAsStringAsync` — onder `TreatWarningsAsErrors` is dit een build-error, geen waarschuwing. Usings/namespace blijven staan (`Xunit`-namespace is compatibel met v3). Verder geen wijzigingen.
 - **`global.json`**: krijgt een `test`-sectie naast de bestaande SDK-pin. Vereist voor `dotnet test` in MTP-modus op SDK 10; zonder deze sleutel valt `dotnet test` terug op VSTest, en die keten bestaat dan niet meer:
 
 ```json
