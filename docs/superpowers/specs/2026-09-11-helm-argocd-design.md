@@ -11,7 +11,7 @@ Standaard Helm-layout, geen subcharts:
 - `Chart.yaml` — `name: learncicd`, semver chart-`version` (start `0.1.0`, handmatig te bumpen bij chart-wijzigingen), `appVersion` volgt de app niet (image-tag staat in values).
 - `values.yaml` — image (`repository: go.berg-connect.nl/beheerder/learncicd`, `tag: latest`, `pullPolicy: IfNotPresent`), `replicaCount: 1`, service (`type: ClusterIP`, `port: 8080`), resources met bescheiden defaults, probes aan/uit + paden.
 - `templates/deployment.yaml` + `templates/service.yaml` (+ `templates/_helpers.tpl` voor labels/namen). Geen ingress, geen HPA, geen configmaps/secrets — YAGNI bij deze API (geen env-config nodig).
-- Private registry-toegang: de Gitea-registry vereist pull-authenticatie → chart ondersteunt `imagePullSecrets` (naam via values, default leeg); het Secret zelf aanmaken blijft mensenwerk buiten de chart (nooit credentials in git).
+- Private registry-toegang: de Gitea-registry vereist pull-authenticatie → chart bevat `templates/pullsecret.yaml` (SealedSecret `gitea-registry`, namespace-scoped `default`, versleuteld met de cluster-key; geen plaintext in git) waar `values.imagePullSecrets` naar verwijst. Initiële handmatige Secret wordt door de controller geadopteerd.
 
 ## 2. Deployment-details (probes, resources, security)
 
@@ -27,7 +27,7 @@ Afstemming op de bestaande container (`USER app`, poort 8080, `GET /health`):
 - **`argocd/application.yaml`** (in deze repo): `Application` met naam `learncicd`, `source.repoURL: https://github.com/bergconnect/LearnCICD.git`, `targetRevision: HEAD`, `path: charts/learncicd`; `destination.server: https://kubernetes.default.svc` (in-cluster ArgoCD) en `namespace: default`. Sync-policy: `automated: {prune: true, selfHeal: true}`. Toepassen met `kubectl apply -f argocd/application.yaml` (mensenwerk, één keer).
 - **Validatie vóór de PR** (verplicht, op feature-branch): `helm lint charts/learncicd` schoon, `helm template charts/learncicd` renderen en `kubectl apply --dry-run=client` waar mogelijk; `yamllint` waar zinvol. Echte deploy-bewijs: na merge Application syncen in ArgoCD-UI en pod `Running` + `/health` OK controleren (port-forward of logs).
 - **CI**: geen workflow-wijziging in v1 — chart-validatie (`helm lint`/`template`) als CI-job is doorgroei, geen onderdeel van dit ontwerp.
-- **Buiten scope**: ingress/TLS, HPA, aparte values per omgeving (`values-prod.yaml`), image-tag-automatisering (ArgoCD Image Updater), secrets-management (Sealed Secrets/Vault), OCI-push van de chart, resource-finetuning op basis van metingen.
+- **Buiten scope**: ingress/TLS, HPA, aparte values per omgeving (`values-prod.yaml`), image-tag-automatisering (ArgoCD Image Updater), overige secrets-management (Vault), OCI-push van de chart, resource-finetuning op basis van metingen.
 
 ## 4. Doorgroei
 
