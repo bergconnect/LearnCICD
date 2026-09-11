@@ -193,11 +193,12 @@ jobs:
         env:
           BRANCH: ci/image-tag-update
         run: >
+          VERSION="${{ needs.version.outputs.semVer }}";
           git config user.name "gitea-actions[bot]";
           git config user.email "gitea-actions[bot]@users.noreply.gitea";
           git switch -C "$BRANCH";
           git add charts/learncicd/values.yaml;
-          git commit -m "ci: update image tag to ${{ needs.version.outputs.semVer }}";
+          git commit -m "ci: update image tag to $VERSION";
           git push --force origin "$BRANCH"
 
       - name: Open update PR via API
@@ -205,11 +206,15 @@ jobs:
           BRANCH: ci/image-tag-update
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: >
+          VERSION="${{ needs.version.outputs.semVer }}";
           STATUS=$(curl -s -o response.json -w "%{http_code}"
           -X POST "${{ github.api_url }}/repos/${{ github.repository }}/pulls"
           -H "Authorization: token $TOKEN"
           -H "Content-Type: application/json"
-          -d "{\"title\":\"ci: update image tag to ${{ needs.version.outputs.semVer }}\",\"body\":\"Automated tag update for image published from ${{ github.sha }}.\",\"head\":\"$BRANCH\",\"base\":\"main\"}");
+          -d "{\"title\":\"ci: update image tag
+          to $VERSION\",\"body\":\"Automated tag update
+          for image published from
+          ${{ github.sha }}.\",\"head\":\"$BRANCH\",\"base\":\"main\"}");
           cat response.json;
           if [ "$STATUS" != "201" ] && ! grep -q "already exists" response.json;
           then echo "::error::Failed to open PR (HTTP $STATUS)"; exit 1; fi
