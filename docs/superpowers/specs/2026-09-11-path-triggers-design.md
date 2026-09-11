@@ -12,8 +12,8 @@ Nieuwe eerste job `changes` (`name: Change detection`) in **beide** workflows:
 2. Eén `run:`-stap die bepaalt welke groepen geraakt zijn en ze als job-`outputs` zet (`true`/`false`-strings):
    - Op `pull_request`: `git diff --name-only origin/main...HEAD` (drie-punts — alle PR-commits t.o.v. merge-base).
    - Op `push`: `git diff --name-only <before> <after>` via event-context (alleen de gepushte commits).
-   - Groepen (glob-regels, eerste match wint per bestand): `code` = `src/**`, `tests/**`, `*.csproj`, `Dockerfile`, `Dockerfile.*`, `global.json`, `.config/**`, `version.json`; `workflows` = `.github/**`; `docs` = `docs/**`, `*.md`, `.gitignore`, `LICENSE`.
-   - Onbekende paden vallen terug op `code=true` (fail-safe: liever een run te veel dan een gemiste test).
+   - Groepen (glob-regels, eerste match wint per bestand): `code` = `src/**`, `tests/**`, `*.csproj`, `Dockerfile`, `Dockerfile.*`, `global.json`, `.config/**`, `version.json`; `workflows` = `.github/**`; `docs` = `docs/**`, `*.md`, `.gitignore`, `LICENSE`; `charts`/`argocd` = expliciete no-op-groep (matcht, zet géén vlag — chart-only wijzigingen skippen alles).
+   - Onbekende paden vallen terug op `code=true` (fail-safe: liever een run te veel dan een gemiste test). De `docs`-output wordt door geen enkele `if` gebruikt — observability voor logs en toekomstige gates. Bij een push zonder geldige basis (nieuwe branch, `before` = zero-SHA) faalt de diff zichtbaar en skippen afhankelijke jobs via `needs`.
 3. Job faalt nooit op inhoud (hooguit op git-fouten zelf); outputs zijn altijd gezet.
 
 ## 2. Job-`if`s (CI én CD)
