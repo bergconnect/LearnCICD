@@ -72,7 +72,7 @@ jobs:
       - name: Display version
         run: >
           echo "Version ${{ steps.version_step.outputs.semVer }}
-          (full: ${{ steps.version_step.outputs.fullSemVer }})
+          (full: ${{ steps.version_step.outputs.fullSemVer }})"
 
   security:
     name: Security scan
@@ -97,4 +97,4 @@ jobs:
           rm -f audit.log
 
       - name: Report deprecated packages
-        run: dotnet list package --deprecated"
+        run: dotnet list package --deprecated
