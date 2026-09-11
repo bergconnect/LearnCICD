@@ -53,19 +53,17 @@ jobs:
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@v4
 
-      - name: Install GitVersion
-        uses: gittools/actions/gitversion/setup@v4
-        with:
-          versionSpec: '6.x'
+      - name: Restore .NET tools
+        run: dotnet tool restore
 
       - name: Determine version
         id: version_step
-        uses: gittools/actions/gitversion/execute@v4
+        run: >
+          echo "semVer=$(dotnet nbgv get-version -v SemVer2)"
+          >> "$GITHUB_OUTPUT"
 
       - name: Display version
-        run: >
-          echo "Version ${{ steps.version_step.outputs.semVer }}
-          (full: ${{ steps.version_step.outputs.fullSemVer }})"
+        run: echo "Version ${{ steps.version_step.outputs.semVer }}"
 
   security:
     name: Security scan
