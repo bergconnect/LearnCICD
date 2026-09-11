@@ -41,3 +41,4 @@ yamllint .github/workflows/ci.yml   # alleen de 2 bekende warnings zijn oké
 - Geen NuGet-caching in CI (de setup-dotnet-cache vereist `packages.lock.json`; zie doorgroei in `docs/superpowers/specs/2026-09-10-github-ci-cd-dotnet-design.md`).
 - `.dockerignore` gebruikt `**/`-prefixen — kale `bin/`-/`obj/`-regels sluiten geneste mappen niet uit en breken `publish --no-restore` met `NETSDK1064`.
 - Ontwerp- en plan-documentatie leeft onder `docs/superpowers/` (`specs/`, `plans/`).
+- Docs-only wijzigingen skippen CI-jobs via de `changes`-job; geskipte checks blokkeren de merge niet.
