@@ -133,7 +133,7 @@ jobs:
           skopeo copy
           --dest-username ${{ secrets.GITEA_USER }}
           --dest-password ${{ secrets.GITEA_TOKEN }}
-          oci:/tmp/image.tar
+          oci-archive:/tmp/image.tar:${{ needs.version.outputs.semVer }}
           docker://${{ env.IMAGE }}:${{ needs.version.outputs.semVer }}
 
       - name: Push latest tag with Skopeo
@@ -141,5 +141,5 @@ jobs:
           skopeo copy
           --dest-username ${{ secrets.GITEA_USER }}
           --dest-password ${{ secrets.GITEA_TOKEN }}
-          oci:/tmp/image.tar
+          oci-archive:/tmp/image.tar:latest
           docker://${{ env.IMAGE }}:latest
