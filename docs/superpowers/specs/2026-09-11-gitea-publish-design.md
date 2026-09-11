@@ -30,8 +30,8 @@ Nieuwe job `publish` (`name: Publish image`, `runs-on: ubuntu-latest`):
 2. `docker/setup-buildx-action@v3` (zelfde als `docker`-job).
 3. Build naar OCI-layout via `docker/build-push-action@v6` met `push: false` en `outputs: type=oci,dest=/tmp/image.tar` (zelfde `context: .`, `Dockerfile` en tags als de login-variant; de tarball leeft alleen in de vluchtige runner-workspace, geen daemon nodig).
 4. Twee `skopeo copy`-stappen (Skopeo 1.13.3 staat voorgeïnstalleerd op de runners) — één per tag (`semVer`, `latest`):
-   `skopeo copy --dest-username ${{ secrets.GITEA_USER }} --dest-password ${{ secrets.GITEA_TOKEN }} oci:/tmp/image.tar docker://${{ env.IMAGE }}:<tag>`
-   met de job-`env.IMAGE` (houdt alle regels onder 80 tekens). Geen `docker/login-action`: Skopeo authenticeert per copy direct met Basic-auth, zonder apart login-handshake.
+   `skopeo copy --dest-username ${{ secrets.GITEA_USER }} --dest-password ${{ secrets.GITEA_TOKEN }} oci-archive:/tmp/image.tar:<tag> docker://${{ env.IMAGE }}:<tag>`
+   met de job-`env.IMAGE` (houdt alle regels onder 80 tekens). Bron-transport is `oci-archive:` (tarball-bestand, mét kale tag — kaal `oci:` verwacht een directory en faalt; lokaal bewezen). Geen `docker/login-action`: Skopeo authenticeert per copy direct met Basic-auth, zonder apart login-handshake.
    - `${{ secrets.GITEA_HOST }}/beheerder/learncicd:${{ needs.version.outputs.semVer }}`
    - `${{ secrets.GITEA_HOST }}/beheerder/learncicd:latest`
 
