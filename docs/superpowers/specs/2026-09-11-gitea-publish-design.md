@@ -28,8 +28,10 @@ Nieuwe job `publish` (`name: Publish image`, `runs-on: ubuntu-latest`):
 
 1. `actions/checkout@v4` (standaard shallow — geen historie nodig; versie komt via `needs.version`-outputs).
 2. `docker/setup-buildx-action@v3` (zelfde als `docker`-job).
-3. Login via `docker/login-action@v3` met `registry: ${{ secrets.GITEA_HOST }}`, `username: ${{ secrets.GITEA_USER }}`, `password: ${{ secrets.GITEA_TOKEN }}`.
-4. `docker/build-push-action@v6` met `push: true`, zelfde `context: .` en `Dockerfile`, tags:
+3. Build naar OCI-layout via `docker/build-push-action@v6` met `push: false` en `outputs: type=oci,dest=/tmp/image.tar` (zelfde `context: .`, `Dockerfile` en tags als de login-variant; de tarball leeft alleen in de vluchtige runner-workspace, geen daemon nodig).
+4. Twee `skopeo copy`-stappen (Skopeo 1.13.3 staat voorgeïnstalleerd op de runners) — één per tag (`semVer`, `latest`):
+   `skopeo copy --dest-username ${{ secrets.GITEA_USER }} --dest-password ${{ secrets.GITEA_TOKEN }} oci:/tmp/image.tar docker://${{ env.IMAGE }}:<tag>`
+   met de job-`env.IMAGE` (houdt alle regels onder 80 tekens). Geen `docker/login-action`: Skopeo authenticeert per copy direct met Basic-auth, zonder apart login-handshake.
    - `${{ secrets.GITEA_HOST }}/beheerder/learncicd:${{ needs.version.outputs.semVer }}`
    - `${{ secrets.GITEA_HOST }}/beheerder/learncicd:latest`
 
@@ -41,7 +43,7 @@ Image-naam `beheerder/learncicd` in kleine letters conform Docker-eis. Gitea maa
 
 Drie repo-secrets op `github.com/bergconnect/LearnCICD` (Settings → Secrets and variables → Actions), door de eigenaar vooraf aan te maken — vóór de implementatie-PR gemergd wordt, anders faalt `publish` op login:
 
-- **`GITEA_HOST`** — `go.berg-connect.nl` (zonder `https://`-prefix, zoals `docker/login-action` hem verwacht).
+- **`GITEA_HOST`** — `go.berg-connect.nl` (zonder `https://`-prefix; Skopeo bouwt er `docker://<host>/...` van).
 - **`GITEA_USER`** — `beheerder` (de Gitea-gebruiker waaraan de token hangt).
 - **`GITEA_TOKEN`** — Gitea personal access token met **package-schrijfrechten** (`write:package`). Bij 2FA op het account is een token verplicht (wachtwoord werkt dan niet).
 
