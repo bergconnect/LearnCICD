@@ -11,7 +11,7 @@ Standaard Helm-layout, geen subcharts:
 - `Chart.yaml` — `name: learncicd`, semver chart-`version` (start `0.1.0`, handmatig te bumpen bij chart-wijzigingen), `appVersion` volgt de app niet (image-tag staat in values).
 - `values.yaml` — image (`repository: go.berg-connect.nl/beheerder/learncicd`, `tag: latest`, `pullPolicy: IfNotPresent`), `replicaCount: 1`, service (`type: ClusterIP`, `port: 8080`), resources met bescheiden defaults, probes aan/uit + paden.
 - `templates/deployment.yaml` + `templates/service.yaml` (+ `templates/_helpers.tpl` voor labels/namen). Geen ingress, geen HPA, geen configmaps/secrets — YAGNI bij deze API (geen env-config nodig).
-- Private registry-toegang: de Gitea-registry vereist pull-authenticatie → chart bevat `templates/pullsecret.yaml` (SealedSecret `gitea-registry`, namespace-scoped `default`, versleuteld met de cluster-key; geen plaintext in git) waar `values.imagePullSecrets` naar verwijst. Initiële handmatige Secret wordt door de controller geadopteerd.
+- Private registry-toegang: de Gitea-registry vereist pull-authenticatie → chart bevat `templates/pullsecret.yaml` (SealedSecret `gitea-registry`, namespace-scoped `default`, versleuteld met de cluster-key; geen plaintext in git) waar `values.imagePullSecrets` naar verwijst. Migratie-notitie: de controller adopteert een bestaand handmatig Secret níét (`already exists and is not managed`) — verwijder het handmatige Secret eerst, daarna maakt de controller het opnieuw aan en ontsleutelt (lokaal bewezen).
 
 ## 2. Deployment-details (probes, resources, security)
 
