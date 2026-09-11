@@ -37,25 +37,6 @@ jobs:
           name: coverage-report
           path: "**/*.cobertura.xml"
 
-  docker:
-    name: Docker build
-    runs-on: [self-hosted]
-    if: github.event_name == 'pull_request'
-    needs: test
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build image (no push)
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: false
-          tags: app:pr-${{ github.event.number }}
-
   version:
     name: Version
     runs-on: [self-hosted]
