@@ -19,7 +19,7 @@
 ```
 (`pull_request`-trigger ongewijzigd — zonder paths-filter.)
 - Nieuwe job `update-image-tag` (`name: Update image tag`): `runs-on: [self-hosted]`, `if: github.event_name == 'push'`, `needs: [publish, version]`, job-`permissions: contents: write` + `pull-requests: write`.
-- Tag-edit exact via bewaakte `sed` (inhoud hieronder); géén `yq` (niet bewezen aanwezig op de runner).
+- Tag-edit exact via `yq` (aanwezig op de runner): `yq -i '.image.tag = strenv(TAG)'` met `TAG` uit `needs.version.outputs.semVer` (lokaal bewezen: exact 1-regel-diff, rest byte-identiek).
 - PR-vorm exact: vaste branch `ci/image-tag-update`, `base: main`, `delete-branch: false`, commit-message `ci: update image tag`, titel met versie, body met commit-sha (inhoud hieronder).
 - `GITHUB_TOKEN` uitsluitend via `token: ${{ secrets.GITHUB_TOKEN }}`; nooit andere secrets aanraken of loggen.
 - `yamllint` exit 0 met hooguit de 2 bekende warnings; geen regels >80 (lange regels alleen via YAML-folding of korte `env`-achtige splits — nooit enkele lange regel).
@@ -82,12 +82,7 @@ naar:
       - name: Set image tag to published version
         run: >
           TAG="${{ needs.version.outputs.semVer }}"
-          MATCHES=$(grep -c '^  tag: ' charts/learncicd/values.yaml);
-          if [ "$MATCHES" -ne 1 ];
-          then echo "::error::Expected exactly one image tag line";
-          exit 1; fi;
-          sed -i -E "s/^(  tag: ).*/\1$TAG/"
-          charts/learncicd/values.yaml
+          yq -i '.image.tag = strenv(TAG)' charts/learncicd/values.yaml
 
       - name: Open update PR
         uses: peter-evans/create-pull-request@v8

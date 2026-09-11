@@ -149,12 +149,7 @@ jobs:
       - name: Set image tag to published version
         run: >
           TAG="${{ needs.version.outputs.semVer }}"
-          MATCHES=$(grep -c '^  tag: ' charts/learncicd/values.yaml);
-          if [ "$MATCHES" -ne 1 ];
-          then echo "::error::Expected exactly one image tag line";
-          exit 1; fi;
-          sed -i -E "s/^(  tag: ).*/\1$TAG/"
-          charts/learncicd/values.yaml
+          yq -i '.image.tag = strenv(TAG)' charts/learncicd/values.yaml
 
       - name: Open update PR
         uses: peter-evans/create-pull-request@v8
