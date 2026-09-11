@@ -72,4 +72,29 @@ jobs:
       - name: Display version
         run: >
           echo "Version ${{ steps.version_step.outputs.semVer }}
-          (full: ${{ steps.version_step.outputs.fullSemVer }})"
+          (full: ${{ steps.version_step.outputs.fullSemVer }})
+
+  security:
+    name: Security scan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Check for vulnerable packages
+        run: >
+          dotnet list package --vulnerable --include-transitive
+          | tee audit.log;
+          if grep -q "has the following vulnerable packages" audit.log;
+          then echo "::error::Vulnerable NuGet packages found";
+          exit 1; fi;
+          rm -f audit.log
+
+      - name: Report deprecated packages
+        run: dotnet list package --deprecated"
