@@ -8,18 +8,37 @@ on:
     paths-ignore:
       - charts/learncicd/values.yaml
 
+env:
+  DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   test:
     name: Test (.NET)
     runs-on: [self-hosted]
-    env:
-      DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
+    if: github.event_name == 'pull_request'
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - name: Check out code
         uses: actions/checkout@v4
 
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@v4
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
 
       - name: Restore dependencies
         run: dotnet restore
@@ -38,14 +57,17 @@ jobs:
         with:
           name: coverage-report
           path: "**/*.cobertura.xml"
+          retention-days: 14
 
   version:
     name: Version
     runs-on: [self-hosted]
+    if: github.event_name == 'push'
+    timeout-minutes: 5
+    permissions:
+      contents: read
     outputs:
       semVer: ${{ steps.version_step.outputs.semVer }}
-    env:
-      DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -70,14 +92,24 @@ jobs:
   security:
     name: Security scan
     runs-on: [self-hosted]
-    env:
-      DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
+    if: github.event_name == 'pull_request'
+    timeout-minutes: 15
+    permissions:
+      contents: read
     steps:
       - name: Check out code
         uses: actions/checkout@v4
 
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@v4
+
+      - name: Cache NuGet packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            nuget-${{ runner.os }}-
 
       - name: Restore dependencies
         run: dotnet restore
@@ -98,7 +130,10 @@ jobs:
     name: Publish image
     runs-on: [self-hosted]
     if: github.event_name == 'push'
-    needs: [test, version]
+    needs: [version]
+    timeout-minutes: 20
+    permissions:
+      contents: read
     env:
       IMAGE: ${{ secrets.GITEA_HOST }}/beheerder/learncicd
     steps:
@@ -113,6 +148,8 @@ jobs:
         with:
           context: .
           push: false
+          provenance: false
+          sbom: false
           tags: |
             ${{ env.IMAGE }}:${{ needs.version.outputs.semVer }}
             ${{ env.IMAGE }}:latest
@@ -139,6 +176,7 @@ jobs:
     runs-on: [self-hosted]
     if: github.event_name == 'push'
     needs: [publish, version]
+    timeout-minutes: 5
     permissions:
       contents: write
       pull-requests: write
@@ -151,17 +189,32 @@ jobs:
           TAG="${{ needs.version.outputs.semVer }}"
           yq -i '.image.tag = strenv(TAG)' charts/learncicd/values.yaml
 
-      - name: Open update PR
-        uses: peter-evans/create-pull-request@v8
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          commit-message: "ci: update image tag"
-          title: >
-            ci: update image tag to
-            ${{ needs.version.outputs.semVer }}
-          body: >
-            Automated tag update for image published from
-            ${{ github.sha }}.
-          branch: ci/image-tag-update
-          base: main
-          delete-branch: false
+      - name: Commit and push tag update
+        env:
+          BRANCH: ci/image-tag-update
+        run: >
+          VERSION="${{ needs.version.outputs.semVer }}";
+          git config user.name "gitea-actions[bot]";
+          git config user.email "gitea-actions[bot]@users.noreply.gitea";
+          git switch -C "$BRANCH";
+          git add charts/learncicd/values.yaml;
+          git commit -m "ci: update image tag to $VERSION";
+          git push --force origin "$BRANCH"
+
+      - name: Open update PR via API
+        env:
+          BRANCH: ci/image-tag-update
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          VERSION="${{ needs.version.outputs.semVer }}";
+          STATUS=$(curl -s -o response.json -w "%{http_code}"
+          -X POST "${{ github.api_url }}/repos/${{ github.repository }}/pulls"
+          -H "Authorization: token $TOKEN"
+          -H "Content-Type: application/json"
+          -d "{\"title\":\"ci: update image tag
+          to $VERSION\",\"body\":\"Automated tag update
+          for image published from
+          ${{ github.sha }}.\",\"head\":\"$BRANCH\",\"base\":\"main\"}");
+          cat response.json;
+          if [ "$STATUS" != "201" ] && ! grep -q "already exists" response.json;
+          then echo "::error::Failed to open PR (HTTP $STATUS)"; exit 1; fi
