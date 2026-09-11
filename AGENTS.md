@@ -8,7 +8,7 @@ CI draait volledig op de self-hosted runner `github-runner` (`runs-on: [self-hos
 
 - NOOIT direct committen of pushen naar `main` — branch protection weigert dit, ook voor de owner.
 - Werk altijd op een feature-branch (`feat/...`, `fix/...`, `chore/...`, `docs/...`, `ci/...`) en merge naar `main` uitsluitend via een GitHub Pull Request.
-- Alle verplichte checks moeten groen zijn vóór een merge: `Test (.NET)`, `Docker build`, `Version` en `Security scan`. De PR-branch moet up-to-date zijn met `main` (strict-beleid).
+- Alle verplichte checks moeten groen zijn vóór een merge: `Test (.NET)`, `Version` en `Security scan`. De PR-branch moet up-to-date zijn met `main` (strict-beleid).
 - Force-push en deletie van `main` zijn uitgeschakeld.
 - Conventionele commit-messages (`feat:`, `fix:`, `ci:`, `chore:`, `docs:`, `test:`).
 
@@ -37,7 +37,7 @@ yamllint .github/workflows/ci.yml   # alleen de 2 bekende warnings zijn oké
 
 ## Belangrijke conventies
 
-- Images worden alleen gepusht door de `publish`-job (na merge naar `main`, naar het Gitea-registry); de `docker`-job bouwt PR-only zonder push.
+- Images worden alleen gepusht door de `publish`-job (na merge naar `main`, naar het Gitea-registry).
 - Geen NuGet-caching in CI (de setup-dotnet-cache vereist `packages.lock.json`; zie doorgroei in `docs/superpowers/specs/2026-09-10-github-ci-cd-dotnet-design.md`).
 - `.dockerignore` gebruikt `**/`-prefixen — kale `bin/`-/`obj/`-regels sluiten geneste mappen niet uit en breken `publish --no-restore` met `NETSDK1064`.
 - Ontwerp- en plan-documentatie leeft onder `docs/superpowers/` (`specs/`, `plans/`).
