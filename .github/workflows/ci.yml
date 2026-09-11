@@ -5,6 +5,8 @@ on:
     branches: [main]
   push:
     branches: [main]
+    paths-ignore:
+      - charts/learncicd/values.yaml
 
 jobs:
   test:
@@ -131,3 +133,40 @@ jobs:
           --dest-password ${{ secrets.GITEA_TOKEN }}
           oci-archive:/tmp/image.tar:latest
           docker://${{ env.IMAGE }}:latest
+
+  update-image-tag:
+    name: Update image tag
+    runs-on: [self-hosted]
+    if: github.event_name == 'push'
+    needs: [publish, version]
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set image tag to published version
+        run: >
+          TAG="${{ needs.version.outputs.semVer }}"
+          MATCHES=$(grep -c '^  tag: ' charts/learncicd/values.yaml);
+          if [ "$MATCHES" -ne 1 ];
+          then echo "::error::Expected exactly one image tag line";
+          exit 1; fi;
+          sed -i -E "s/^(  tag: ).*/\1$TAG/"
+          charts/learncicd/values.yaml
+
+      - name: Open update PR
+        uses: peter-evans/create-pull-request@v8
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "ci: update image tag"
+          title: >
+            ci: update image tag to
+            ${{ needs.version.outputs.semVer }}
+          body: >
+            Automated tag update for image published from
+            ${{ github.sha }}.
+          branch: ci/image-tag-update
+          base: main
+          delete-branch: false
