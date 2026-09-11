@@ -1,0 +1,34 @@
+replicaCount: 1
+image:
+  repository: go.berg-connect.nl/beheerder/learncicd
+  tag: latest
+  # IfNotPresent haalt eenzelfde tag niet opnieuw op bij digest-wissel;
+  # use Always voor strict latest-volgen.
+  pullPolicy: IfNotPresent
+imagePullSecrets:
+  - name: gitea-registry
+service:
+  type: ClusterIP
+  port: 8080
+probes:
+  liveness:
+    enabled: true
+    path: /health
+    initialDelaySeconds: 20
+    periodSeconds: 20
+    timeoutSeconds: 2
+    failureThreshold: 3
+  readiness:
+    enabled: true
+    path: /health
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
