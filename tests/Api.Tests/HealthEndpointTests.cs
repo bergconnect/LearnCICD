@@ -21,4 +21,14 @@ public class HealthEndpointTests : IClassFixture<WebApplicationFactory<Program>>
         var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
         Assert.Contains("Healthy", body);
     }
+
+    [Fact]
+    public async Task GetOpenApiDocument_ContainsHealthEndpoint()
+    {
+        var response = await _client.GetAsync("/openapi/v1.json", TestContext.Current.CancellationToken);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
+        Assert.Contains("/health", body);
+    }
 }
