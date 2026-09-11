@@ -9,7 +9,7 @@ on:
 jobs:
   test:
     name: Test (.NET)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted]
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -37,7 +37,7 @@ jobs:
 
   docker:
     name: Docker build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted]
     if: github.event_name == 'pull_request'
     needs: test
     steps:
@@ -56,7 +56,7 @@ jobs:
 
   version:
     name: Version
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted]
     outputs:
       semVer: ${{ steps.version_step.outputs.semVer }}
     steps:
@@ -81,7 +81,7 @@ jobs:
 
   security:
     name: Security scan
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted]
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -106,7 +106,7 @@ jobs:
 
   publish:
     name: Publish image
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted]
     if: github.event_name == 'push'
     needs: [test, version]
     env:
