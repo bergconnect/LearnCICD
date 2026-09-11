@@ -3,6 +3,8 @@ name: CI
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
 
 jobs:
   test:
@@ -36,6 +38,7 @@ jobs:
   docker:
     name: Docker build
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
     needs: test
     steps:
       - name: Check out code
@@ -54,6 +57,8 @@ jobs:
   version:
     name: Version
     runs-on: ubuntu-latest
+    outputs:
+      semVer: ${{ steps.version_step.outputs.semVer }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
