@@ -9,7 +9,9 @@ on:
 jobs:
   test:
     name: Test (.NET)
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted]
+    env:
+      DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -37,7 +39,7 @@ jobs:
 
   docker:
     name: Docker build
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted]
     if: github.event_name == 'pull_request'
     needs: test
     steps:
@@ -56,14 +58,19 @@ jobs:
 
   version:
     name: Version
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted]
     outputs:
       semVer: ${{ steps.version_step.outputs.semVer }}
+    env:
+      DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
     steps:
       - name: Check out code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
 
       - name: Install GitVersion
         uses: gittools/actions/gitversion/setup@v4
@@ -81,7 +88,9 @@ jobs:
 
   security:
     name: Security scan
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted]
+    env:
+      DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -106,7 +115,7 @@ jobs:
 
   publish:
     name: Publish image
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted]
     if: github.event_name == 'push'
     needs: [test, version]
     env:
