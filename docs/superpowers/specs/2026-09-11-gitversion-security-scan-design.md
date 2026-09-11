@@ -9,7 +9,7 @@
 Nieuwe job `version` (`name: Version`, `runs-on: ubuntu-latest`), zonder `needs` op andere jobs — versie-informatie mag nooit door een falende test geblokkeerd worden:
 
 1. `actions/checkout@v4` met **`fetch-depth: 0`** — GitVersion heeft de volledige historie nodig (aantal commits sinds basis, branch-structuur); met de standaard shallow checkout berekent hij een verkeerde versie. Dit is het kritieke configuratiepunt.
-2. GitVersion uitvoeren in **Mainline**-modus via een `GitVersion.yml` in de repo-root (expliciet, versiebeheerd — geen impliciete defaults). Mainline past bij single-`main` + conventionele commits: elke merge verhoogt (major/minor/patch o.b.v. commit-berichten).
+2. GitVersion uitvoeren via een `GitVersion.yml` in de repo-root met inhoud `workflow: GitHubFlow/v1` (expliciet, versiebeheerd — geen impliciete defaults). GitVersion 6.x kent geen `mode: Mainline` meer (lokaal bewezen: configuratiefout); `GitHubFlow/v1` is het stabiele equivalent voor single-`main` + feature-branches + PRs (de v6-`TrunkBased`-workflow is nog experimenteel). Elke merge verhoogt. Lokaal bewezen op deze repo zonder tags: `0.0.1-21`, exit 0. Uitvoering via `gittools/actions` (`setup` + `execute`, major-pin `@v4`, tool-lijn `6.x`; tool 6.8.2 lokaal geverifieerd).
 3. De berekende versie **alleen tonen** (log-output als PR-check-output), nergens in vastleggen: geen assembly-stamping, geen tags, geen image-labels. Op PR-builds levert dit een pre-release-vorm op (bv. `0.1.0-pullrequest.N+...`) — dat is verwacht gedrag, geen fout.
 4. Geen secrets nodig; de job faalt alleen bij een kapotte GitVersion-configuratie zelf.
 
