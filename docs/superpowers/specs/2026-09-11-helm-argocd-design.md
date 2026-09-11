@@ -19,7 +19,7 @@ Afstemming op de bestaande container (`USER app`, poort 8080, `GET /health`):
 
 - **Probes**: liveness + readiness als HTTP-GET op `/health`, poort 8080 (zelfde endpoint als de tests valideren). Conservatieve timings, exact in values, beide aan/uit schakelbaar.
 - **Resources**: bescheiden defaults (`requests` klein, `limits` ruimhartig) volledig overrulbaar via values — voorkomt OOMKills zonder te knijpen bij een leer-API.
-- **Security**: `securityContext.runAsNonRoot: true` (sluit aan op `USER app` in de image), geen privileged flags, geen host-volumes. ImagePullPolicy default `IfNotPresent` met values-comment dat `Always` hoort bij strict `latest`-volgen (kubelet haalt met `IfNotPresent` eenzelfde tag niet opnieuw op bij digest-wissel).
+- **Security**: `securityContext.runAsNonRoot: true` plus `runAsUser: 1654` (sluit aan op `USER app` in de image). Alleen `runAsNonRoot` is onvoldoende: kubelet kan een benoemde image-user niet verifiëren (`CreateContainerConfigError`) — vandaar de numerieke UID (1654 = `app` in `mcr.microsoft.com/dotnet/aspnet`-images, lokaal bewezen). Geen privileged flags, geen host-volumes. ImagePullPolicy default `IfNotPresent` met values-comment dat `Always` hoort bij strict `latest`-volgen (kubelet haalt met `IfNotPresent` eenzelfde tag niet opnieuw op bij digest-wissel).
 - **Service**: ClusterIP op poort 8080 (targetPort 8080), selectors via helpers.
 
 ## 3. ArgoCD Application, validatie & scope
