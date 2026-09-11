@@ -4,9 +4,9 @@
 
 **Goal:** Laat CI na elke `publish` een PR openen die `image.tag` in `values.yaml` op de gepushte `semVer` zet; een `paths-ignore`-breaker voorkomt luscascades.
 
-**Architecture:** Push-trigger krijgt `paths-ignore` voor `values.yaml`; nieuwe job `update-image-tag` (achter `publish` + `version`) edit de tag met een bewaakte `sed` en opent/bijwerkt een vaste PR-branch via `peter-evans/create-pull-request@v8`. Daarna validatie via PR (checks groen, `publish` geskipt) plus merge, gevolgd door het echte bewijs: de push-run opent de update-PR, na merge daarvan loopt géén CI (breaker) en draait ArgoCD de gepinde versie. Alle mechanismen hieronder zijn op 2026-09-11 lokaal bewezen: `sed`-guard vindt exact 1 `tag:`-regel en YAML parseert het resultaat als string; action-pin `@v8` is latest-major (v8.1.1).
+**Architecture:** Push-trigger krijgt `paths-ignore` voor `values.yaml`; nieuwe job `update-image-tag` (achter `publish` + `version`) edit de tag met `yq` en opent/bijwerkt een vaste PR-branch via `peter-evans/create-pull-request@v8`. Daarna validatie via PR (checks groen, `publish` geskipt) plus merge, gevolgd door het echte bewijs: de push-run opent de update-PR, na merge daarvan loopt géén CI (breaker) en draait ArgoCD de gepinde versie. Alle mechanismen hieronder zijn op 2026-09-11 lokaal bewezen: `yq`-edit geeft exact 1-regel-diff; action-pin `@v8` is latest-major (v8.1.1).
 
-**Tech Stack:** `peter-evans/create-pull-request@v8` (latest-major v8.1.1, april 2026), POSIX `grep`/`sed` (geen extra tooling — `yq` staat niet vast op de runner), job-`permissions` (`contents: write`, `pull-requests: write`), bestaande `semVer`-output.
+**Tech Stack:** `peter-evans/create-pull-request@v8` (latest-major v8.1.1, april 2026), `yq` v4 op de runner (aanwezigheid bevestigd; `strenv(TAG)`-vorm lokaal bewezen met v4.48.1), job-`permissions` (`contents: write`, `pull-requests: write`), bestaande `semVer`-output.
 
 ## Global Constraints
 
