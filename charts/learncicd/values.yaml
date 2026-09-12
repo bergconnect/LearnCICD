@@ -1,7 +1,7 @@
 replicaCount: 1
 image:
   repository: go.berg-connect.nl/beheerder/learncicd
-  tag: 0.1.55
+  tag: 0.1.76
   # IfNotPresent haalt eenzelfde tag niet opnieuw op bij digest-wissel;
   # use Always voor strict latest-volgen.
   pullPolicy: IfNotPresent
