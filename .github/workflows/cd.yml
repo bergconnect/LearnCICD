@@ -109,7 +109,7 @@ jobs:
       - name: Set image tag to published version
         run: >
           TAG="${{ needs.version.outputs.semVer }}"
-          yq -i '.image.tag = strenv(TAG)' charts/learncicd/values.yaml
+          yq -i '.image.tag = strenv(TAG)' charts/learncicd/values-devtest.yaml
 
       - name: Commit and push tag update
         env:
@@ -119,7 +119,7 @@ jobs:
           git config user.name "gitea-actions[bot]";
           git config user.email "gitea-actions[bot]@users.noreply.gitea";
           git switch -C "$BRANCH";
-          git add charts/learncicd/values.yaml;
+          git add charts/learncicd/values-devtest.yaml;
           git commit -m "ci: update image tag to $VERSION";
           git push --force origin "$BRANCH"
 

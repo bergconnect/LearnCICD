@@ -1,0 +1,124 @@
+name: Promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Doelomgeving'
+        required: true
+        type: choice
+        options: [acceptatie, productie]
+      version:
+        description: 'Image-versie (SemVer2, bv. 0.1.77)'
+        required: true
+        type: string
+
+permissions: {}
+
+concurrency:
+  group: promote-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: [self-hosted]
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Check version exists as image tag
+        id: check
+        env:
+          IMAGE: ${{ secrets.GITEA_HOST }}/beheerder/learncicd
+          GITEA_USER: ${{ secrets.GITEA_USER }}
+          GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
+        run: >
+          VERSION="${{ inputs.version }}";
+          case "$VERSION" in ''|*[!0-9.]*)
+          echo "::error::Ongeldige version-input '$VERSION'
+          (alleen cijfers en punten)"; exit 1;; esac;
+          skopeo inspect --raw
+          --creds "$GITEA_USER:$GITEA_TOKEN"
+          docker://$IMAGE:$VERSION > /dev/null
+          || { echo "::error::Image-tag $VERSION bestaat niet
+          in $IMAGE"; exit 1; };
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  promote:
+    name: Promote to ${{ inputs.environment }}
+    runs-on: [self-hosted]
+    needs: [validate]
+    timeout-minutes: 10
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Sequence check and bump tag
+        env:
+          ENV: ${{ inputs.environment }}
+          VERSION: ${{ needs.validate.outputs.version }}
+        run: >
+          FILE="charts/learncicd/values-$ENV.yaml";
+          CURRENT="$(yq '.image.tag' "$FILE")";
+          if [ "$CURRENT" = "$VERSION" ]; then
+          echo "Omgeving $ENV staat al op $VERSION —
+          niets te doen"; exit 0; fi;
+          if [ "$ENV" = "productie" ]; then
+            ACC="$(yq '.image.tag' charts/learncicd/values-acceptatie.yaml)";
+            if [ "$ACC" != "$VERSION" ]; then
+          echo "::error::Sequentie-schending: acceptatie
+          staat op $ACC, gevraagd $VERSION voor productie";
+              exit 1; fi; fi;
+          yq -i '.image.tag = strenv(VERSION)' "$FILE"
+
+      - name: Commit and push promotion branch
+        id: bump
+        env:
+          ENV: ${{ inputs.environment }}
+          VERSION: ${{ needs.validate.outputs.version }}
+          BRANCH: "ci/promote-${{ inputs.environment }}-\
+            ${{ needs.validate.outputs.version }}"
+        run: >
+          FILE="charts/learncicd/values-$ENV.yaml";
+          if git diff --quiet "$FILE"; then
+          echo "Geen wijziging — klaar";
+          echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; fi;
+          git config user.name "gitea-actions[bot]";
+          git config user.email "gitea-actions[bot]@users.noreply.gitea";
+          git switch -C "$BRANCH";
+          git add "$FILE";
+          git commit -m "ci: promote $ENV to $VERSION";
+          git push --force origin "$BRANCH";
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Open promotion PR via API
+        if: steps.bump.outputs.changed == 'true'
+        env:
+          ENV: ${{ inputs.environment }}
+          VERSION: ${{ needs.validate.outputs.version }}
+          BRANCH: "ci/promote-${{ inputs.environment }}-\
+            ${{ needs.validate.outputs.version }}"
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: >
+          STATUS=$(curl -s -o response.json -w "%{http_code}"
+          -X POST "${{ github.api_url }}/repos/${{ github.repository }}/pulls"
+          -H "Authorization: token $TOKEN"
+          -H "Content-Type: application/json"
+          -d "{\"title\":\"ci: promote $ENV
+          to $VERSION\",\"body\":\"Promotie van image $VERSION
+          naar $ENV
+          (sequentie
+          gecontroleerd).\",\"head\":\"$BRANCH\",\"base\":\"main\"}");
+          cat response.json;
+          if [ "$STATUS" != "201" ] && ! grep -q "already exists" response.json;
+          then echo "::error::Failed to open PR (HTTP $STATUS)"; exit 1; fi
