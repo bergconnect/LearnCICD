@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: learncicd-acceptatie
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/bergconnect/LearnCICD.git
+    targetRevision: HEAD
+    path: charts/learncicd
+    helm:
+      valueFiles:
+        - $values/charts/learncicd/values.yaml
+        - $values/charts/learncicd/values-acceptatie.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: acceptatie
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
