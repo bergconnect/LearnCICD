@@ -62,6 +62,8 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
 
       - name: Sequence check and bump tag
         env:
@@ -108,7 +110,7 @@ jobs:
           VERSION: ${{ needs.validate.outputs.version }}
           BRANCH: "ci/promote-${{ inputs.environment }}-\
             ${{ needs.validate.outputs.version }}"
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TOKEN: ${{ secrets.GH_PAT }}
         run: >
           STATUS=$(curl -s -o response.json -w "%{http_code}"
           -X POST "${{ github.api_url }}/repos/${{ github.repository }}/pulls"

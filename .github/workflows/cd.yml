@@ -105,6 +105,8 @@ jobs:
     steps:
       - name: Check out code
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
 
       - name: Set image tag to published version
         run: >
@@ -126,7 +128,7 @@ jobs:
       - name: Open update PR via API
         env:
           BRANCH: ci/image-tag-update
-          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TOKEN: ${{ secrets.GH_PAT }}
         run: >
           VERSION="${{ needs.version.outputs.semVer }}";
           STATUS=$(curl -s -o response.json -w "%{http_code}"
