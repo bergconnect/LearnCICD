@@ -42,3 +42,5 @@ yamllint .github/workflows/ci.yml   # alleen de 2 bekende warnings zijn oké
 - `.dockerignore` gebruikt `**/`-prefixen — kale `bin/`-/`obj/`-regels sluiten geneste mappen niet uit en breken `publish --no-restore` met `NETSDK1064`.
 - Ontwerp- en plan-documentatie leeft onder `docs/superpowers/` (`specs/`, `plans/`).
 - Docs-only wijzigingen skippen CI-jobs via de `changes`-job; geskipte checks blokkeren de merge niet.
+
+<!-- filter-proof (wordt verwijderd) -->
