@@ -3,13 +3,6 @@ name: CI
 on:
   pull_request:
     branches: [main]
-    paths-ignore:
-      - 'charts/**'
-      - 'argocd/**'
-      - 'docs/**'
-      - '**/*.md'
-      - '.gitignore'
-      - 'LICENSE'
 
 env:
   DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
@@ -21,12 +14,51 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Change detection
+    runs-on: [self-hosted]
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      code: ${{ steps.classify.outputs.code }}
+      workflows: ${{ steps.classify.outputs.workflows }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Classify changed paths
+        id: classify
+        run: >
+          FILES=$(git diff --name-only origin/main...HEAD);
+          CODE=false; WORKFLOWS=false;
+          while IFS= read -r f; do
+          case "$f" in
+            charts/*|argocd/*)
+            :;;
+            docs/*|*.md|.gitignore|LICENSE)
+            :;;
+            .github/*)
+            WORKFLOWS=true;;
+            *)
+            CODE=true;;
+          esac;
+          done <<< "$FILES";
+          echo "code=$CODE" >> "$GITHUB_OUTPUT";
+          echo "workflows=$WORKFLOWS" >> "$GITHUB_OUTPUT"
+
   test:
     name: Test (.NET)
     runs-on: [self-hosted]
     timeout-minutes: 15
     permissions:
       contents: read
+    needs: [changes]
+    if: >
+      needs.changes.outputs.code == 'true' ||
+      needs.changes.outputs.workflows == 'true'
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -67,6 +99,10 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+    needs: [changes]
+    if: >
+      needs.changes.outputs.code == 'true' ||
+      needs.changes.outputs.workflows == 'true'
     steps:
       - name: Check out code
         uses: actions/checkout@v4
