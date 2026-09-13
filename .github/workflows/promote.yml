@@ -1,5 +1,7 @@
 name: Promote
 
+run-name: Promote ${{ inputs.environment }} to ${{ inputs.version }}
+
 on:
   workflow_dispatch:
     inputs:
@@ -51,7 +53,7 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
   promote:
-    name: Promote to ${{ inputs.environment }}
+    name: Promote ${{ inputs.environment }} to ${{ inputs.version }}
     runs-on: [self-hosted]
     needs: [validate]
     timeout-minutes: 10
@@ -103,7 +105,8 @@ jobs:
           git push --force origin "$BRANCH";
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
-      - name: Open promotion PR via API
+      - name: Open promotion PR
+        id: open_pr
         if: steps.bump.outputs.changed == 'true'
         env:
           ENV: ${{ inputs.environment }}
@@ -111,9 +114,11 @@ jobs:
           BRANCH: "ci/promote-${{ inputs.environment }}-\
             ${{ needs.validate.outputs.version }}"
           TOKEN: ${{ secrets.GH_PAT }}
+          API: ${{ github.api_url }}
+          REPO: ${{ github.repository }}
         run: >
           STATUS=$(curl -s -o response.json -w "%{http_code}"
-          -X POST "${{ github.api_url }}/repos/${{ github.repository }}/pulls"
+          -X POST "$API/repos/$REPO/pulls"
           -H "Authorization: token $TOKEN"
           -H "Content-Type: application/json"
           -d "{\"title\":\"ci: promote $ENV
@@ -123,4 +128,13 @@ jobs:
           gecontroleerd).\",\"head\":\"$BRANCH\",\"base\":\"main\"}");
           cat response.json;
           if [ "$STATUS" != "201" ] && ! grep -q "already exists" response.json;
-          then echo "::error::Failed to open PR (HTTP $STATUS)"; exit 1; fi
+          then echo "::error::Failed to open PR (HTTP $STATUS)"; exit 1; fi;
+          PR_NUMBER=$(jq -r '.number // empty' response.json);
+          if [ -z "$PR_NUMBER" ]; then
+          PR_NUMBER=$(curl -s -H "Authorization: token $TOKEN"
+          "$API/repos/$REPO/pulls?state=open"
+          | jq -r --arg BRANCH "$BRANCH"
+          '.[] | select(.head.ref == $BRANCH) | .number' | head -n1); fi;
+          if [ -z "$PR_NUMBER" ]; then
+          echo "::error::PR number not found"; exit 1; fi;
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
