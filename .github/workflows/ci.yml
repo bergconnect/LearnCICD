@@ -36,12 +36,12 @@ jobs:
           CODE=false; WORKFLOWS=false;
           while IFS= read -r f; do
           case "$f" in
-            charts/*|argocd/*)
-            :;;
-            docs/*|*.md|.gitignore|LICENSE)
-            :;;
+            src/**|tests/**|*.csproj|Dockerfile|Dockerfile.*|global.json|version.json)
+            CODE=true;;
             .github/*)
             WORKFLOWS=true;;
+            charts/*|argocd/*|docs/*|*.md|.gitignore|LICENSE)
+            :;;
             *)
             CODE=true;;
           esac;
