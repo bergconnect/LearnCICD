@@ -3,10 +3,6 @@ name: CI
 on:
   pull_request:
     branches: [main]
-    paths-ignore:
-      - 'charts/learncicd/values-devtest.yaml'
-      - 'charts/learncicd/values-acceptatie.yaml'
-      - 'charts/learncicd/values-productie.yaml'
 
 env:
   DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
