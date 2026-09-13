@@ -125,14 +125,17 @@ jobs:
           git commit -m "ci: update image tag to $VERSION";
           git push --force origin "$BRANCH"
 
-      - name: Open update PR via API
+      - name: Open update PR
+        id: open_pr
         env:
           BRANCH: ci/image-tag-update
           TOKEN: ${{ secrets.GH_PAT }}
+          API: ${{ github.api_url }}
+          REPO: ${{ github.repository }}
         run: >
           VERSION="${{ needs.version.outputs.semVer }}";
           STATUS=$(curl -s -o response.json -w "%{http_code}"
-          -X POST "${{ github.api_url }}/repos/${{ github.repository }}/pulls"
+          -X POST "$API/repos/$REPO/pulls"
           -H "Authorization: token $TOKEN"
           -H "Content-Type: application/json"
           -d "{\"title\":\"ci: update image tag
@@ -141,4 +144,13 @@ jobs:
           ${{ github.sha }}.\",\"head\":\"$BRANCH\",\"base\":\"main\"}");
           cat response.json;
           if [ "$STATUS" != "201" ] && ! grep -q "already exists" response.json;
-          then echo "::error::Failed to open PR (HTTP $STATUS)"; exit 1; fi
+          then echo "::error::Failed to open PR (HTTP $STATUS)"; exit 1; fi;
+          PR_NUMBER=$(jq -r '.number // empty' response.json);
+          if [ -z "$PR_NUMBER" ]; then
+          PR_NUMBER=$(curl -s -H "Authorization: token $TOKEN"
+          "$API/repos/$REPO/pulls?state=open"
+          | jq -r --arg BRANCH "$BRANCH"
+          '.[] | select(.head.ref == $BRANCH) | .number' | head -n1); fi;
+          if [ -z "$PR_NUMBER" ]; then
+          echo "::error::PR number not found"; exit 1; fi;
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
