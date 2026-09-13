@@ -154,3 +154,26 @@ jobs:
           if [ -z "$PR_NUMBER" ]; then
           echo "::error::PR number not found"; exit 1; fi;
           echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Enable auto-merge
+        env:
+          TOKEN: ${{ secrets.GH_PAT }}
+          API: ${{ github.api_url }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.open_pr.outputs.pr_number }}
+        run: >
+          PR_JSON=$(curl -s -H "Authorization: Bearer $TOKEN"
+          "$API/repos/$REPO/pulls/$PR_NUMBER");
+          if [ "$(echo "$PR_JSON" | jq -r '.auto_merge')" != "null" ];
+          then echo "auto-merge al actief"; exit 0; fi;
+          NODE=$(echo "$PR_JSON" | jq -r '.node_id');
+          QUERY='mutation($id:ID!){enablePullRequestAutoMerge
+          (input:{pullRequestId:$id,mergeMethod:MERGE})
+          {pullRequest{number}}}';
+          jq -n --arg q "$QUERY" --arg id "$NODE"
+          '{query:$q,variables:{id:$id}}' > gql.json;
+          RESP=$(curl -s -X POST -H "Authorization: Bearer $TOKEN"
+          -H "Content-Type: application/json" "$API/graphql" -d @gql.json);
+          echo "$RESP"; rm -f gql.json;
+          if echo "$RESP" | jq -e '.errors' > /dev/null;
+          then echo "::error::auto-merge inschakelen mislukt"; exit 1; fi
