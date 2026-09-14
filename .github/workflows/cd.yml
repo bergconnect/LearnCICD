@@ -122,7 +122,7 @@ jobs:
           git config user.email "gitea-actions[bot]@users.noreply.gitea";
           git switch -C "$BRANCH";
           git add charts/learncicd/values-devtest.yaml;
-          git commit -m "ci: update image tag to $VERSION";
+          git commit -m "ci: update devtest image tag to $VERSION";
           git push --force origin "$BRANCH"
 
       - name: Open update PR
@@ -138,7 +138,7 @@ jobs:
           -X POST "$API/repos/$REPO/pulls"
           -H "Authorization: token $TOKEN"
           -H "Content-Type: application/json"
-          -d "{\"title\":\"ci: update image tag
+          -d "{\"title\":\"ci: update devtest image tag
           to $VERSION\",\"body\":\"Automated tag update
           for image published from
           ${{ github.sha }}.\",\"head\":\"$BRANCH\",\"base\":\"main\"}");
