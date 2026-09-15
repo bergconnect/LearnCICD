@@ -60,7 +60,6 @@ jobs:
     env:
       IMAGE: ${{ secrets.GITEA_HOST }}/beheerder/learncicd
       VER: ${{ needs.version.outputs.semVer }}
-      XDG_RUNTIME_DIR: ${{ runner.temp }}/runtime
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -77,6 +76,8 @@ jobs:
           -p:ContainerArchiveOutputPath=/tmp/image.tar
 
       - name: Log in to Gitea registry
+        env:
+          XDG_RUNTIME_DIR: ${{ runner.temp }}/runtime
         run: >
           skopeo login
           --username ${{ secrets.GITEA_USER }}
@@ -84,12 +85,16 @@ jobs:
           ${{ secrets.GITEA_HOST }}
 
       - name: Push version tag with Skopeo
+        env:
+          XDG_RUNTIME_DIR: ${{ runner.temp }}/runtime
         run: >
           skopeo copy
           docker-archive:/tmp/image.tar:$IMAGE:$VER
           docker://$IMAGE:$VER
 
       - name: Push latest tag with Skopeo
+        env:
+          XDG_RUNTIME_DIR: ${{ runner.temp }}/runtime
         run: >
           skopeo copy
           docker-archive:/tmp/image.tar:$IMAGE:$VER
