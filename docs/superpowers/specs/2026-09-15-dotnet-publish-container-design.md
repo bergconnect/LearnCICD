@@ -38,7 +38,10 @@ Belangrijk verschil met de oude Docker-build (tijdens validatie ontdekt):
 
 ```yaml
 - name: Log in to Gitea registry
+  env:
+    XDG_RUNTIME_DIR: ${{ runner.temp }}/runtime
   run: >
+    mkdir -p "$XDG_RUNTIME_DIR";
     skopeo login
     --username ${{ secrets.GITEA_USER }}
     --password ${{ secrets.GITEA_TOKEN }}
@@ -57,7 +60,7 @@ Belangrijk verschil met de oude Docker-build (tijdens validatie ontdekt):
     docker://$IMAGE:latest
 ```
 
-De `skopeo login`-stap (bewuste toevoeging na brainstormreview) schrijft de credentials naar `~/.local/share/containers/auth.json`; de push-stappen gebruiken daarna geen `--dest-username`/`--dest-password`-flags meer (die loggen het token in de run-log, login niet).
+De `skopeo login`-stap (bewuste toevoeging na brainstormreview) schrijft de credentials naar `$XDG_RUNTIME_DIR/containers/auth.json`; de push-stappen gebruiken daarna geen `--dest-username`/`--dest-password`-flags meer (die loggen het token in de run-log, login niet). `XDG_RUNTIME_DIR` staat per stap (`runner`-context mag niet op job-level) en de login-stap maakt de map eerst met `mkdir -p` omdat skopeo hem niet zelf aanmaakt.
 
 `ContainerRepository` is expliciet gezet zodat de `RepoTags` in de tar exact overeenkomen met `${{ env.IMAGE }}` (volledig pad incl. Gitea-host).
 
