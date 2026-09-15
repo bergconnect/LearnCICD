@@ -79,6 +79,7 @@ jobs:
         env:
           XDG_RUNTIME_DIR: ${{ runner.temp }}/runtime
         run: >
+          mkdir -p "$XDG_RUNTIME_DIR";
           skopeo login
           --username ${{ secrets.GITEA_USER }}
           --password ${{ secrets.GITEA_TOKEN }}
