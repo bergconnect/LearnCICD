@@ -43,7 +43,7 @@ Belangrijk verschil met de oude Docker-build (tijdens validatie ontdekt):
   run: >
     mkdir -p "$XDG_RUNTIME_DIR";
     skopeo login
-    --username ${{ secrets.GITEA_USER }}
+    --username ${{ vars.GITEA_USER }}
     --password ${{ secrets.GITEA_TOKEN }}
     ${{ vars.GITEA_HOST }}
 
