@@ -95,14 +95,6 @@ jobs:
           docker-archive:/tmp/image.tar:$IMAGE:$VER
           docker://$IMAGE:$VER
 
-      - name: Push latest tag with Skopeo
-        env:
-          XDG_RUNTIME_DIR: ${{ runner.temp }}/runtime
-        run: >
-          skopeo copy
-          docker-archive:/tmp/image.tar:$IMAGE:$VER
-          docker://$IMAGE:latest
-
   update-image-tag:
     name: Update image tag
     runs-on: [self-hosted]
