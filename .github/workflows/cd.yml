@@ -91,7 +91,7 @@ jobs:
     permissions:
       contents: read
     env:
-      IMAGE: ${{ vars.GITEA_HOST }}/beheerder/learncicd
+      IMAGE: ${{ vars.GITEA_HOST }}/${{ inputs.image-name }}
       VER: ${{ needs.version.outputs.semVer }}
     steps:
       - name: Check out code
@@ -99,7 +99,7 @@ jobs:
 
       - name: Build image archive with dotnet publish
         run: >
-          dotnet publish src/Api/Api.csproj
+          dotnet publish ${{ inputs.project-path }}
           --os linux --arch x64
           -c Release
           -p:ContainerBaseImage=mcr.microsoft.com/dotnet/aspnet:10.0
