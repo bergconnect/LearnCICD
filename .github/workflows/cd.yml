@@ -91,7 +91,8 @@ jobs:
     permissions:
       contents: read
     env:
-      IMAGE: ${{ vars.GITEA_HOST }}/${{ inputs.image-name }}
+      IMAGE_HOST: ${{ vars.GITEA_HOST }}
+      IMAGE_NAME: ${{ inputs.image-name || 'beheerder/learncicd' }}
       VER: ${{ needs.version.outputs.semVer }}
     steps:
       - name: Check out code
@@ -99,11 +100,11 @@ jobs:
 
       - name: Build image archive with dotnet publish
         run: >
-          dotnet publish ${{ inputs.project-path }}
+          dotnet publish ${{ inputs.project-path || 'src/Api/Api.csproj' }}
           --os linux --arch x64
           -c Release
           -p:ContainerBaseImage=mcr.microsoft.com/dotnet/aspnet:10.0
-          -p:ContainerRepository=${{ env.IMAGE }}
+          -p:ContainerRepository=$IMAGE_HOST/$IMAGE_NAME
           -p:ContainerImageTag=$VER
           /t:PublishContainer
           -p:ContainerArchiveOutputPath=/tmp/image.tar
@@ -123,8 +124,8 @@ jobs:
           XDG_RUNTIME_DIR: ${{ runner.temp }}/runtime
         run: >
           skopeo copy
-          docker-archive:/tmp/image.tar:$IMAGE:$VER
-          docker://$IMAGE:$VER
+          docker-archive:/tmp/image.tar:$IMAGE_HOST/$IMAGE_NAME:$VER
+          docker://$IMAGE_HOST/$IMAGE_NAME:$VER
 
   update-image-tag:
     name: Update image tag
@@ -144,14 +145,16 @@ jobs:
         env:
           VALUES_FILE: ${{ inputs.values-file }}
         run: >
+          VALUES_FILE="${VALUES_FILE:-charts/learncicd/values-devtest.yaml}";
           TAG="${{ needs.version.outputs.semVer }}"
           yq -i '.image.tag = strenv(TAG)' "$VALUES_FILE"
 
       - name: Commit and push tag update
         env:
-          BRANCH: ${{ inputs.tag-branch }}
+          BRANCH: ${{ inputs.tag-branch || 'ci/image-tag-update' }}
           VALUES_FILE: ${{ inputs.values-file }}
         run: >
+          VALUES_FILE="${VALUES_FILE:-charts/learncicd/values-devtest.yaml}";
           VERSION="${{ needs.version.outputs.semVer }}";
           git config user.name "gitea-actions[bot]";
           git config user.email "gitea-actions[bot]@users.noreply.gitea";
@@ -163,7 +166,7 @@ jobs:
       - name: Open update PR
         id: open_pr
         env:
-          BRANCH: ${{ inputs.tag-branch }}
+          BRANCH: ${{ inputs.tag-branch || 'ci/image-tag-update' }}
           TOKEN: ${{ secrets.GH_PAT }}
           API: ${{ github.api_url }}
           REPO: ${{ github.repository }}
