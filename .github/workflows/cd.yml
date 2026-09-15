@@ -141,26 +141,29 @@ jobs:
           token: ${{ secrets.GH_PAT }}
 
       - name: Set image tag to published version
+        env:
+          VALUES_FILE: ${{ inputs.values-file }}
         run: >
           TAG="${{ needs.version.outputs.semVer }}"
-          yq -i '.image.tag = strenv(TAG)' charts/learncicd/values-devtest.yaml
+          yq -i '.image.tag = strenv(TAG)' "$VALUES_FILE"
 
       - name: Commit and push tag update
         env:
-          BRANCH: ci/image-tag-update
+          BRANCH: ${{ inputs.tag-branch }}
+          VALUES_FILE: ${{ inputs.values-file }}
         run: >
           VERSION="${{ needs.version.outputs.semVer }}";
           git config user.name "gitea-actions[bot]";
           git config user.email "gitea-actions[bot]@users.noreply.gitea";
           git switch -C "$BRANCH";
-          git add charts/learncicd/values-devtest.yaml;
+          git add "$VALUES_FILE";
           git commit -m "ci: update devtest image tag to $VERSION";
           git push --force origin "$BRANCH"
 
       - name: Open update PR
         id: open_pr
         env:
-          BRANCH: ci/image-tag-update
+          BRANCH: ${{ inputs.tag-branch }}
           TOKEN: ${{ secrets.GH_PAT }}
           API: ${{ github.api_url }}
           REPO: ${{ github.repository }}
