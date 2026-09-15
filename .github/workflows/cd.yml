@@ -10,6 +10,40 @@ on:
       - '**/*.md'
       - '.gitignore'
       - 'LICENSE'
+  workflow_call:
+    inputs:
+      project-path:
+        description: 'Pad naar het API-csproj'
+        required: false
+        default: 'src/Api/Api.csproj'
+        type: string
+      image-name:
+        description: 'Image-naam zonder registry-host'
+        required: false
+        default: 'beheerder/learncicd'
+        type: string
+      values-file:
+        description: 'Helm values-bestand waarvan de image-tag wordt bijgewerkt'
+        required: false
+        default: 'charts/learncicd/values-devtest.yaml'
+        type: string
+      tag-branch:
+        description: 'Branch voor de image-tag-update-PR'
+        required: false
+        default: 'ci/image-tag-update'
+        type: string
+    secrets:
+      GITEA_TOKEN:
+        required: true
+      GH_PAT:
+        required: true
+    outputs:
+      semVer:
+        description: 'Gepubliceerde versie (SemVer2)'
+        value: ${{ jobs.version.outputs.semVer }}
+
+env:
+  DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
 
 permissions: {}
 
@@ -18,15 +52,166 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  cd:
-    name: CD
-    uses: ./.github/workflows/cd-template.yml
+  version:
+    name: Version
+    runs-on: [self-hosted]
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      semVer: ${{ steps.version_step.outputs.semVer }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
+      - name: Determine version
+        id: version_step
+        run: >
+          echo "semVer=$(dotnet nbgv get-version -v SemVer2)"
+          >> "$GITHUB_OUTPUT"
+
+      - name: Display version
+        run: echo "Version ${{ steps.version_step.outputs.semVer }}"
+
+  publish:
+    name: Publish image
+    runs-on: [self-hosted]
+    needs: [version]
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      IMAGE_HOST: ${{ vars.GITEA_HOST }}
+      IMAGE_NAME: ${{ inputs.image-name || 'beheerder/learncicd' }}
+      VER: ${{ needs.version.outputs.semVer }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Build image archive with dotnet publish
+        run: >
+          dotnet publish ${{ inputs.project-path || 'src/Api/Api.csproj' }}
+          --os linux --arch x64
+          -c Release
+          -p:ContainerBaseImage=mcr.microsoft.com/dotnet/aspnet:10.0
+          -p:ContainerRepository=$IMAGE_HOST/$IMAGE_NAME
+          -p:ContainerImageTag=$VER
+          /t:PublishContainer
+          -p:ContainerArchiveOutputPath=/tmp/image.tar
+
+      - name: Log in to Gitea registry
+        env:
+          XDG_RUNTIME_DIR: ${{ runner.temp }}/runtime
+        run: >
+          mkdir -p "$XDG_RUNTIME_DIR";
+          skopeo login
+          --username ${{ vars.GITEA_USER }}
+          --password ${{ secrets.GITEA_TOKEN }}
+          ${{ vars.GITEA_HOST }}
+
+      - name: Push version tag with Skopeo
+        env:
+          XDG_RUNTIME_DIR: ${{ runner.temp }}/runtime
+        run: >
+          skopeo copy
+          docker-archive:/tmp/image.tar:$IMAGE_HOST/$IMAGE_NAME:$VER
+          docker://$IMAGE_HOST/$IMAGE_NAME:$VER
+
+  update-image-tag:
+    name: Update image tag
+    runs-on: [self-hosted]
+    needs: [publish, version]
+    timeout-minutes: 5
     permissions:
       contents: write
       pull-requests: write
-    with:
-      project-path: src/Api/Api.csproj
-      image-name: beheerder/learncicd
-      values-file: charts/learncicd/values-devtest.yaml
-      tag-branch: ci/image-tag-update
-    secrets: inherit
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+
+      - name: Set image tag to published version
+        env:
+          VALUES_FILE: ${{ inputs.values-file }}
+        run: >
+          VALUES_FILE="${VALUES_FILE:-charts/learncicd/values-devtest.yaml}";
+          TAG="${{ needs.version.outputs.semVer }}"
+          yq -i '.image.tag = strenv(TAG)' "$VALUES_FILE"
+
+      - name: Commit and push tag update
+        env:
+          BRANCH: ${{ inputs.tag-branch || 'ci/image-tag-update' }}
+          VALUES_FILE: ${{ inputs.values-file }}
+        run: >
+          VALUES_FILE="${VALUES_FILE:-charts/learncicd/values-devtest.yaml}";
+          VERSION="${{ needs.version.outputs.semVer }}";
+          git config user.name "gitea-actions[bot]";
+          git config user.email "gitea-actions[bot]@users.noreply.gitea";
+          git switch -C "$BRANCH";
+          git add "$VALUES_FILE";
+          git commit -m "ci: update devtest image tag to $VERSION";
+          git push --force origin "$BRANCH"
+
+      - name: Open update PR
+        id: open_pr
+        env:
+          BRANCH: ${{ inputs.tag-branch || 'ci/image-tag-update' }}
+          TOKEN: ${{ secrets.GH_PAT }}
+          API: ${{ github.api_url }}
+          REPO: ${{ github.repository }}
+        run: >
+          VERSION="${{ needs.version.outputs.semVer }}";
+          STATUS=$(curl -s -o response.json -w "%{http_code}"
+          -X POST "$API/repos/$REPO/pulls"
+          -H "Authorization: token $TOKEN"
+          -H "Content-Type: application/json"
+          -d "{\"title\":\"ci: update devtest image tag
+          to $VERSION\",\"body\":\"Automated tag update
+          for image published from
+          ${{ github.sha }}.\",\"head\":\"$BRANCH\",\"base\":\"main\"}");
+          cat response.json;
+          if [ "$STATUS" != "201" ] && ! grep -q "already exists" response.json;
+          then echo "::error::Failed to open PR (HTTP $STATUS)"; exit 1; fi;
+          PR_NUMBER=$(jq -r '.number // empty' response.json);
+          if [ -z "$PR_NUMBER" ]; then
+          PR_NUMBER=$(curl -s -H "Authorization: token $TOKEN"
+          "$API/repos/$REPO/pulls?state=open"
+          | jq -r --arg BRANCH "$BRANCH"
+          '.[] | select(.head.ref == $BRANCH) | .number' | head -n1); fi;
+          if [ -z "$PR_NUMBER" ]; then
+          echo "::error::PR number not found"; exit 1; fi;
+          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Enable auto-merge
+        env:
+          TOKEN: ${{ secrets.GH_PAT }}
+          API: ${{ github.api_url }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ steps.open_pr.outputs.pr_number }}
+        run: >
+          PR_JSON=$(curl -s -H "Authorization: Bearer $TOKEN"
+          "$API/repos/$REPO/pulls/$PR_NUMBER");
+          if [ "$(echo "$PR_JSON" | jq -r '.auto_merge')" != "null" ];
+          then echo "auto-merge al actief"; exit 0; fi;
+          NODE=$(echo "$PR_JSON" | jq -r '.node_id');
+          QUERY='mutation($id:ID!){enablePullRequestAutoMerge
+          (input:{pullRequestId:$id,mergeMethod:MERGE})
+          {pullRequest{number}}}';
+          jq -n --arg q "$QUERY" --arg id "$NODE"
+          '{query:$q,variables:{id:$id}}' > gql.json;
+          RESP=$(curl -s -X POST -H "Authorization: Bearer $TOKEN"
+          -H "Content-Type: application/json" "$API/graphql" -d @gql.json);
+          echo "$RESP"; rm -f gql.json;
+          if echo "$RESP" | jq -e '.errors' > /dev/null;
+          then echo "::error::auto-merge inschakelen mislukt"; exit 1; fi
