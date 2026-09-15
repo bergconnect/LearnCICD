@@ -4,115 +4,20 @@ on:
   pull_request:
     branches: [main]
 
-env:
-  DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
-
 permissions: {}
 
-concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+# NOTE: no concurrency block here on purpose. A top-level concurrency
+# block on a caller workflow prevents GitHub from expanding reusable
+# workflow jobs (run fails instantly with 0 jobs, no error surfaced).
+# The template keeps its own concurrency block (proven harmless).
 
 jobs:
-  changes:
-    name: Change detection
-    runs-on: [self-hosted]
-    timeout-minutes: 5
+  ci:
+    uses: ./.github/workflows/ci-template.yml
     permissions:
       contents: read
-    outputs:
-      code: ${{ steps.classify.outputs.code }}
-      workflows: ${{ steps.classify.outputs.workflows }}
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Classify changed paths
-        id: classify
-        run: >
-          FILES=$(git diff --name-only origin/main...HEAD);
-          CODE=false; WORKFLOWS=false;
-          while IFS= read -r f; do
-          case "$f" in
-            src/**|tests/**|*.csproj|Dockerfile|Dockerfile.*|global.json|version.json)
-            CODE=true;;
-            .github/*)
-            WORKFLOWS=true;;
-            charts/*|argocd/*|docs/*|*.md|.gitignore|LICENSE)
-            :;;
-            *)
-            CODE=true;;
-          esac;
-          done <<< "$FILES";
-          echo "code=$CODE" >> "$GITHUB_OUTPUT";
-          echo "workflows=$WORKFLOWS" >> "$GITHUB_OUTPUT"
-
-  test:
-    name: Test (.NET)
-    runs-on: [self-hosted]
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    needs: [changes]
-    if: needs.changes.outputs.code == 'true'
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-
-      - name: Set up .NET SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 10.0.x
-
-      - name: Restore dependencies
-        run: dotnet restore
-
-      - name: Build (Release)
-        run: dotnet build -c Release --no-restore /p:TreatWarningsAsErrors=true
-
-      - name: Test with coverage
-        run: >
-          dotnet test -c Release --no-build
-          --coverage --coverage-output-format cobertura
-
-      - name: Upload coverage report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report
-          path: "**/*.cobertura.xml"
-          retention-days: 14
-
-  security:
-    name: Security scan
-    runs-on: [self-hosted]
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    needs: [changes]
-    if: needs.changes.outputs.code == 'true'
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-
-      - name: Set up .NET SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 10.0.x
-
-      - name: Restore dependencies
-        run: dotnet restore
-
-      - name: Check for vulnerable packages
-        run: >
-          dotnet list package --vulnerable --include-transitive
-          | tee audit.log;
-          if grep -q "has the following vulnerable packages" audit.log;
-          then echo "::error::Vulnerable NuGet packages found";
-          exit 1; fi;
-          rm -f audit.log
-
-      - name: Report deprecated packages
-        run: dotnet list package --deprecated
+    with:
+      dotnet-version: 10.0.x
+      code-paths: >
+        src/** tests/** *.csproj Dockerfile Dockerfile.*
+        global.json version.json
