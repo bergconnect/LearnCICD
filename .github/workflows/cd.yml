@@ -10,6 +10,37 @@ on:
       - '**/*.md'
       - '.gitignore'
       - 'LICENSE'
+  workflow_call:
+    inputs:
+      project-path:
+        description: 'Pad naar het API-csproj'
+        required: false
+        default: 'src/Api/Api.csproj'
+        type: string
+      image-name:
+        description: 'Image-naam zonder registry-host'
+        required: false
+        default: 'beheerder/learncicd'
+        type: string
+      values-file:
+        description: 'Helm values-bestand waarvan de image-tag wordt bijgewerkt'
+        required: false
+        default: 'charts/learncicd/values-devtest.yaml'
+        type: string
+      tag-branch:
+        description: 'Branch voor de image-tag-update-PR'
+        required: false
+        default: 'ci/image-tag-update'
+        type: string
+    secrets:
+      GITEA_TOKEN:
+        required: true
+      GH_PAT:
+        required: true
+    outputs:
+      semVer:
+        description: 'Gepubliceerde versie (SemVer2)'
+        value: ${{ jobs.version.outputs.semVer }}
 
 env:
   DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
