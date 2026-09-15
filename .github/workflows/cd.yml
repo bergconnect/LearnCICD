@@ -59,40 +59,37 @@ jobs:
       contents: read
     env:
       IMAGE: ${{ secrets.GITEA_HOST }}/beheerder/learncicd
+      VER: ${{ needs.version.outputs.semVer }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build image to OCI layout
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          push: false
-          provenance: false
-          sbom: false
-          tags: |
-            ${{ env.IMAGE }}:${{ needs.version.outputs.semVer }}
-            ${{ env.IMAGE }}:latest
-          outputs: type=oci,dest=/tmp/image.tar
+      - name: Build image archive with dotnet publish
+        run: >
+          dotnet publish src/Api/Api.csproj
+          --os linux --arch x64
+          -c Release
+          -p:ContainerBaseImage=mcr.microsoft.com/dotnet/aspnet:10.0
+          -p:ContainerRepository=${{ env.IMAGE }}
+          -p:ContainerImageTag=$VER
+          /t:PublishContainer
+          -p:ContainerArchiveOutputPath=/tmp/image.tar
 
       - name: Push version tag with Skopeo
         run: >
           skopeo copy
           --dest-username ${{ secrets.GITEA_USER }}
           --dest-password ${{ secrets.GITEA_TOKEN }}
-          oci-archive:/tmp/image.tar:${{ needs.version.outputs.semVer }}
-          docker://${{ env.IMAGE }}:${{ needs.version.outputs.semVer }}
+          docker-archive:/tmp/image.tar:$IMAGE:$VER
+          docker://$IMAGE:$VER
 
       - name: Push latest tag with Skopeo
         run: >
           skopeo copy
           --dest-username ${{ secrets.GITEA_USER }}
           --dest-password ${{ secrets.GITEA_TOKEN }}
-          oci-archive:/tmp/image.tar:latest
-          docker://${{ env.IMAGE }}:latest
+          docker-archive:/tmp/image.tar:$IMAGE:$VER
+          docker://$IMAGE:latest
 
   update-image-tag:
     name: Update image tag
