@@ -60,6 +60,7 @@ jobs:
     env:
       IMAGE: ${{ secrets.GITEA_HOST }}/beheerder/learncicd
       VER: ${{ needs.version.outputs.semVer }}
+      XDG_RUNTIME_DIR: ${{ runner.temp }}/runtime
     steps:
       - name: Check out code
         uses: actions/checkout@v4
