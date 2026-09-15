@@ -75,19 +75,22 @@ jobs:
           /t:PublishContainer
           -p:ContainerArchiveOutputPath=/tmp/image.tar
 
+      - name: Log in to Gitea registry
+        run: >
+          skopeo login
+          --username ${{ secrets.GITEA_USER }}
+          --password ${{ secrets.GITEA_TOKEN }}
+          ${{ secrets.GITEA_HOST }}
+
       - name: Push version tag with Skopeo
         run: >
           skopeo copy
-          --dest-username ${{ secrets.GITEA_USER }}
-          --dest-password ${{ secrets.GITEA_TOKEN }}
           docker-archive:/tmp/image.tar:$IMAGE:$VER
           docker://$IMAGE:$VER
 
       - name: Push latest tag with Skopeo
         run: >
           skopeo copy
-          --dest-username ${{ secrets.GITEA_USER }}
-          --dest-password ${{ secrets.GITEA_TOKEN }}
           docker-archive:/tmp/image.tar:$IMAGE:$VER
           docker://$IMAGE:latest
 

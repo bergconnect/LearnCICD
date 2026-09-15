@@ -37,22 +37,27 @@ Belangrijk verschil met de oude Docker-build (tijdens validatie ontdekt):
 - Job-level env-variabele `VER: ${{ needs.version.outputs.semVer }}` houdt de regels binnen de 80-char yamllint-limiet:
 
 ```yaml
+- name: Log in to Gitea registry
+  run: >
+    skopeo login
+    --username ${{ secrets.GITEA_USER }}
+    --password ${{ secrets.GITEA_TOKEN }}
+    ${{ secrets.GITEA_HOST }}
+
 - name: Push version tag with Skopeo
   run: >
     skopeo copy
-    --dest-username ${{ secrets.GITEA_USER }}
-    --dest-password ${{ secrets.GITEA_TOKEN }}
     docker-archive:/tmp/image.tar:$IMAGE:$VER
     docker://$IMAGE:$VER
 
 - name: Push latest tag with Skopeo
   run: >
     skopeo copy
-    --dest-username ${{ secrets.GITEA_USER }}
-    --dest-password ${{ secrets.GITEA_TOKEN }}
     docker-archive:/tmp/image.tar:$IMAGE:$VER
     docker://$IMAGE:latest
 ```
+
+De `skopeo login`-stap (bewuste toevoeging na brainstormreview) schrijft de credentials naar `~/.local/share/containers/auth.json`; de push-stappen gebruiken daarna geen `--dest-username`/`--dest-password`-flags meer (die loggen het token in de run-log, login niet).
 
 `ContainerRepository` is expliciet gezet zodat de `RepoTags` in de tar exact overeenkomen met `${{ env.IMAGE }}` (volledig pad incl. Gitea-host).
 
