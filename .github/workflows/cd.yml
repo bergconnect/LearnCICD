@@ -10,6 +10,37 @@ on:
       - '**/*.md'
       - '.gitignore'
       - 'LICENSE'
+  workflow_call:
+    inputs:
+      project-path:
+        description: 'Pad naar het API-csproj'
+        required: false
+        default: 'src/Api/Api.csproj'
+        type: string
+      image-name:
+        description: 'Image-naam zonder registry-host'
+        required: false
+        default: 'beheerder/learncicd'
+        type: string
+      values-file:
+        description: 'Helm values-bestand waarvan de image-tag wordt bijgewerkt'
+        required: false
+        default: 'charts/learncicd/values-devtest.yaml'
+        type: string
+      tag-branch:
+        description: 'Branch voor de image-tag-update-PR'
+        required: false
+        default: 'ci/image-tag-update'
+        type: string
+    secrets:
+      GITEA_TOKEN:
+        required: true
+      GH_PAT:
+        required: true
+    outputs:
+      semVer:
+        description: 'Gepubliceerde versie (SemVer2)'
+        value: ${{ jobs.version.outputs.semVer }}
 
 env:
   DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
@@ -60,7 +91,7 @@ jobs:
     permissions:
       contents: read
     env:
-      IMAGE: ${{ vars.GITEA_HOST }}/beheerder/learncicd
+      IMAGE: ${{ vars.GITEA_HOST }}/${{ inputs.image-name }}
       VER: ${{ needs.version.outputs.semVer }}
     steps:
       - name: Check out code
@@ -68,7 +99,7 @@ jobs:
 
       - name: Build image archive with dotnet publish
         run: >
-          dotnet publish src/Api/Api.csproj
+          dotnet publish ${{ inputs.project-path }}
           --os linux --arch x64
           -c Release
           -p:ContainerBaseImage=mcr.microsoft.com/dotnet/aspnet:10.0
@@ -110,26 +141,29 @@ jobs:
           token: ${{ secrets.GH_PAT }}
 
       - name: Set image tag to published version
+        env:
+          VALUES_FILE: ${{ inputs.values-file }}
         run: >
           TAG="${{ needs.version.outputs.semVer }}"
-          yq -i '.image.tag = strenv(TAG)' charts/learncicd/values-devtest.yaml
+          yq -i '.image.tag = strenv(TAG)' "$VALUES_FILE"
 
       - name: Commit and push tag update
         env:
-          BRANCH: ci/image-tag-update
+          BRANCH: ${{ inputs.tag-branch }}
+          VALUES_FILE: ${{ inputs.values-file }}
         run: >
           VERSION="${{ needs.version.outputs.semVer }}";
           git config user.name "gitea-actions[bot]";
           git config user.email "gitea-actions[bot]@users.noreply.gitea";
           git switch -C "$BRANCH";
-          git add charts/learncicd/values-devtest.yaml;
+          git add "$VALUES_FILE";
           git commit -m "ci: update devtest image tag to $VERSION";
           git push --force origin "$BRANCH"
 
       - name: Open update PR
         id: open_pr
         env:
-          BRANCH: ci/image-tag-update
+          BRANCH: ${{ inputs.tag-branch }}
           TOKEN: ${{ secrets.GH_PAT }}
           API: ${{ github.api_url }}
           REPO: ${{ github.repository }}
