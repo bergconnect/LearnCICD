@@ -37,6 +37,8 @@ jobs:
 
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
 
       - name: Restore .NET tools
         run: dotnet tool restore
