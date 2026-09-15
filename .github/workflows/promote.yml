@@ -37,7 +37,7 @@ jobs:
       - name: Check version exists as image tag
         id: check
         env:
-          IMAGE: ${{ secrets.GITEA_HOST }}/beheerder/learncicd
+          IMAGE: ${{ vars.GITEA_HOST }}/beheerder/learncicd
           GITEA_USER: ${{ secrets.GITEA_USER }}
           GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
         run: >
