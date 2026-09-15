@@ -33,7 +33,7 @@ Vervang door:
 Belangrijk verschil met de oude Docker-build (tijdens validatie ontdekt):
 
 - `dotnet publish` produceert een **docker-archive**-tar (`manifest.json` en `RepoTags`), géén OCI-layout (`index.json`). Daarom gebruiken de Skopeo-stappen `docker-archive:` als bron-transport.
-- De tar bevat alleen het versie-tag (`ContainerImageTag`), géén `latest`. De `latest`-push verwijst daarom naar hetzelfde `docker-archive:`-bron-tag maar met een ander *destinatie*-tag.
+- De tar bevat alleen het versie-tag (`ContainerImageTag`), géén `latest` — wat prima is, want alleen de versie-tag wordt gepusht.
 - Job-level env-variabele `VER: ${{ needs.version.outputs.semVer }}` houdt de regels binnen de 80-char yamllint-limiet:
 
 ```yaml
@@ -52,13 +52,9 @@ Belangrijk verschil met de oude Docker-build (tijdens validatie ontdekt):
     skopeo copy
     docker-archive:/tmp/image.tar:$IMAGE:$VER
     docker://$IMAGE:$VER
-
-- name: Push latest tag with Skopeo
-  run: >
-    skopeo copy
-    docker-archive:/tmp/image.tar:$IMAGE:$VER
-    docker://$IMAGE:latest
 ```
+
+(De `latest`-push is verwijderd: geen enkele consumer gebruikt de `latest`-tag; ArgoCD volgt versie-tags.)
 
 De `skopeo login`-stap (bewuste toevoeging na brainstormreview) schrijft de credentials naar `$XDG_RUNTIME_DIR/containers/auth.json`; de push-stappen gebruiken daarna geen `--dest-username`/`--dest-password`-flags meer (die loggen het token in de run-log, login niet). `XDG_RUNTIME_DIR` staat per stap (`runner`-context mag niet op job-level) en de login-stap maakt de map eerst met `mkdir -p` omdat skopeo hem niet zelf aanmaakt.
 
