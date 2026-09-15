@@ -45,7 +45,7 @@ Belangrijk verschil met de oude Docker-build (tijdens validatie ontdekt):
     skopeo login
     --username ${{ secrets.GITEA_USER }}
     --password ${{ secrets.GITEA_TOKEN }}
-    ${{ secrets.GITEA_HOST }}
+    ${{ vars.GITEA_HOST }}
 
 - name: Push version tag with Skopeo
   run: >

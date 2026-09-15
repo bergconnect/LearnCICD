@@ -58,7 +58,7 @@ jobs:
     permissions:
       contents: read
     env:
-      IMAGE: ${{ secrets.GITEA_HOST }}/beheerder/learncicd
+      IMAGE: ${{ vars.GITEA_HOST }}/beheerder/learncicd
       VER: ${{ needs.version.outputs.semVer }}
     steps:
       - name: Check out code
@@ -83,7 +83,7 @@ jobs:
           skopeo login
           --username ${{ secrets.GITEA_USER }}
           --password ${{ secrets.GITEA_TOKEN }}
-          ${{ secrets.GITEA_HOST }}
+          ${{ vars.GITEA_HOST }}
 
       - name: Push version tag with Skopeo
         env:
