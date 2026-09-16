@@ -3,13 +3,13 @@ name: CD
 on:
   push:
     branches: [main]
-    paths-ignore:
-      - 'charts/**'
-      - 'argocd/**'
-      - 'docs/**'
-      - '**/*.md'
-      - '.gitignore'
-      - 'LICENSE'
+    paths:
+      - 'src/Api/**'
+      - 'tests/Api.Tests/**'
+      - 'global.json'
+      - 'version.json'
+      - '.github/workflows/cd.yml'
+      - '.github/workflows/cd-template.yml'
 
 permissions: {}
 
