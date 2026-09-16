@@ -1,0 +1,7 @@
+{
+  "version": "0.1",
+  "pathFilters": ["."],
+  "publicReleaseRefSpec": [
+    "^refs/heads/main$"
+  ]
+}
