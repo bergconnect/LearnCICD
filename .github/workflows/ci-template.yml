@@ -77,6 +77,9 @@ jobs:
     permissions:
       contents: read
     needs: [changes]
+    if: >
+      needs.changes.outputs.projects != '' &&
+      needs.changes.outputs.projects != '[]'
     strategy:
       matrix:
         project: ${{ fromJSON(needs.changes.outputs.projects) }}
@@ -119,6 +122,9 @@ jobs:
     permissions:
       contents: read
     needs: [changes]
+    if: >
+      needs.changes.outputs.projects != '' &&
+      needs.changes.outputs.projects != '[]'
     strategy:
       matrix:
         project: ${{ fromJSON(needs.changes.outputs.projects) }}
