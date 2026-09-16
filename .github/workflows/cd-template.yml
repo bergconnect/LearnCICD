@@ -7,10 +7,6 @@ on:
         required: true
       GH_PAT:
         required: true
-    outputs:
-      semVer:
-        description: 'Gepubliceerde versie (SemVer2)'
-        value: ${{ jobs.version.outputs.semVer }}
 
 env:
   DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
@@ -85,41 +81,10 @@ jobs:
           done;
           echo "matrix=$MATRIX_JSON" >> "$GITHUB_OUTPUT"
 
-  version:
-    name: Version
-    runs-on: [self-hosted]
-    timeout-minutes: 5
-    permissions:
-      contents: read
-    outputs:
-      semVer: ${{ steps.version_step.outputs.semVer }}
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up .NET SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 10.0.x
-
-      - name: Restore .NET tools
-        run: dotnet tool restore
-
-      - name: Determine version
-        id: version_step
-        run: >
-          echo "semVer=$(dotnet nbgv get-version -v SemVer2)"
-          >> "$GITHUB_OUTPUT"
-
-      - name: Display version
-        run: echo "Version ${{ steps.version_step.outputs.semVer }}"
-
   publish:
     name: Publish image
     runs-on: [self-hosted]
-    needs: [detect, version]
+    needs: [detect]
     if: >
       needs.detect.outputs.matrix != '' &&
       needs.detect.outputs.matrix != '[]'
@@ -134,10 +99,23 @@ jobs:
       PROJECT: ${{ matrix.release.project }}
       SUFFIX: ${{ matrix.release.suffix }}
       IMAGE_HOST: ${{ vars.GITEA_HOST }}
-      VER: ${{ needs.version.outputs.semVer }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
+      - name: Determine version
+        run: >
+          VER=$(cd "src/$PROJECT" && dotnet nbgv get-version -v SemVer2);
+          echo "VER=$VER" >> "$GITHUB_ENV";
+          echo "Version $VER for $PROJECT"
 
       - name: Build image archive with dotnet publish
         run: >
@@ -172,7 +150,7 @@ jobs:
   update-tag:
     name: Update image tag
     runs-on: [self-hosted]
-    needs: [publish, version, detect]
+    needs: [publish, detect]
     if: >
       always() &&
       needs.detect.outputs.matrix != '' &&
@@ -190,12 +168,25 @@ jobs:
       SUFFIX: ${{ matrix.release.suffix }}
       BRANCH: ${{ matrix.release.branch }}
       IMAGE_HOST: ${{ vars.GITEA_HOST }}
-      VER: ${{ needs.version.outputs.semVer }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GH_PAT }}
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
+      - name: Determine version
+        run: >
+          VER=$(cd "src/$PROJECT" && dotnet nbgv get-version -v SemVer2);
+          echo "VER=$VER" >> "$GITHUB_ENV";
+          echo "Version $VER for $PROJECT"
 
       - name: Check published image exists
         id: gate
@@ -218,14 +209,14 @@ jobs:
         if: steps.gate.outputs.proceed == 'true'
         run: >
           VALUES_FILE="charts/$SUFFIX/values-devtest.yaml";
-          TAG="${{ needs.version.outputs.semVer }}"
+          TAG="$VER"
           yq -i '.image.tag = strenv(TAG)' "$VALUES_FILE";
           echo "VALUES_FILE=$VALUES_FILE" >> "$GITHUB_ENV"
 
       - name: Commit and push tag update
         if: steps.gate.outputs.proceed == 'true'
         run: >
-          VERSION="${{ needs.version.outputs.semVer }}";
+          VERSION="$VER";
           git config user.name "gitea-actions[bot]";
           git config user.email "gitea-actions[bot]@users.noreply.gitea";
           git switch -C "$BRANCH";
@@ -241,7 +232,7 @@ jobs:
           API: ${{ github.api_url }}
           REPO: ${{ github.repository }}
         run: >
-          VERSION="${{ needs.version.outputs.semVer }}";
+          VERSION="$VER";
           STATUS=$(curl -s -o response.json -w "%{http_code}"
           -X POST "$API/repos/$REPO/pulls"
           -H "Authorization: token $TOKEN"
