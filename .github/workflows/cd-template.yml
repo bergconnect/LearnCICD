@@ -170,6 +170,7 @@ jobs:
     name: Update image tag
     runs-on: [self-hosted]
     needs: [publish, version, detect]
+    if: always()
     timeout-minutes: 5
     permissions:
       contents: write
