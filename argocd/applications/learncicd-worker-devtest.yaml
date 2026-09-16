@@ -1,0 +1,24 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: learncicd-worker-devtest
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/bergconnect/LearnCICD.git
+    targetRevision: HEAD
+    path: charts/learncicd-worker
+    helm:
+      valueFiles:
+        - $values/charts/learncicd-worker/values.yaml
+        - $values/charts/learncicd-worker/values-devtest.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: devtest
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

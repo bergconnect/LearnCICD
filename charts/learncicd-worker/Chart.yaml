@@ -1,0 +1,6 @@
+apiVersion: v2
+name: learncicd-worker
+description: LearnCICD Worker minimal API
+type: application
+version: 0.1.0
+appVersion: "0.1"
