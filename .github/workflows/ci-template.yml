@@ -8,16 +8,6 @@ on:
         required: false
         default: '10.0.x'
         type: string
-      api-paths:
-        description: 'Spatiegescheiden globs die als Api-code tellen'
-        required: false
-        default: 'src/Api/** tests/Api.Tests/**'
-        type: string
-      worker-paths:
-        description: 'Spatiegescheiden globs die als Worker-code tellen'
-        required: false
-        default: 'src/Worker/** tests/Worker.Tests/**'
-        type: string
 
 env:
   DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
@@ -36,8 +26,7 @@ jobs:
     permissions:
       contents: read
     outputs:
-      api: ${{ steps.classify.outputs.api }}
-      worker: ${{ steps.classify.outputs.worker }}
+      projects: ${{ steps.classify.outputs.projects }}
       workflows: ${{ steps.classify.outputs.workflows }}
     steps:
       - name: Check out code
@@ -47,31 +36,24 @@ jobs:
 
       - name: Classify changed paths
         id: classify
-        env:
-          API_PATHS: ${{ inputs.api-paths }}
-          WORKER_PATHS: ${{ inputs.worker-paths }}
         run: >
-          API_PATHS="${API_PATHS:-src/Api/** tests/Api.Tests/**}";
-          WORKER_PATHS="${WORKER_PATHS:-src/Worker/**
-          tests/Worker.Tests/**}";
           FILES=$(git diff --name-only origin/main...HEAD);
-          API=false; WORKER=false; WORKFLOWS=false; set -f;
+          PROJECTS=$(ls src);
+          SELECTED=""; WORKFLOWS=false; set -f;
           while IFS= read -r f; do
           MATCHED=false;
           case "$f" in
           global.json|version.json|*.sln|Directory.*)
-          API=true; WORKER=true; MATCHED=true;;
+          SELECTED="$PROJECTS"; MATCHED=true;;
           .github/workflows/ci.yml|.github/workflows/ci-template.yml)
-          API=true; WORKER=true; MATCHED=true;;
+          SELECTED="$PROJECTS"; MATCHED=true;;
           esac;
           if [ "$MATCHED" = false ]; then
-          for p in $API_PATHS; do
-          case "$f" in $p)
-          API=true; MATCHED=true; break;; esac; done; fi;
-          if [ "$MATCHED" = false ]; then
-          for p in $WORKER_PATHS; do
-          case "$f" in $p)
-          WORKER=true; MATCHED=true; break;; esac; done; fi;
+          for P in $PROJECTS; do
+          case "$f" in src/$P/**|tests/$P.Tests/**)
+          case " $SELECTED " in *" $P "*) :;;
+          *) SELECTED="$SELECTED $P";; esac;
+          MATCHED=true; break;; esac; done; fi;
           if [ "$MATCHED" = false ]; then
           case "$f" in
           .github/*)
@@ -79,21 +61,27 @@ jobs:
           charts/*|argocd/*|docs/*|*.md|.gitignore|LICENSE)
           :;;
           *)
-          API=true; WORKER=true;;
+          SELECTED="$PROJECTS";;
           esac; fi;
           done <<< "$FILES";
-          echo "api=$API" >> "$GITHUB_OUTPUT";
-          echo "worker=$WORKER" >> "$GITHUB_OUTPUT";
+          if [ -z "$SELECTED" ]; then JSON="[]";
+          else JSON=$(printf '%s\n' $SELECTED | sort -u | jq -R . | jq -cs .);
+          fi;
+          echo "projects=$JSON" >> "$GITHUB_OUTPUT";
           echo "workflows=$WORKFLOWS" >> "$GITHUB_OUTPUT"
 
-  test-api:
-    name: Test Api
+  test:
+    name: Test
     runs-on: [self-hosted]
     timeout-minutes: 15
     permissions:
       contents: read
     needs: [changes]
-    if: needs.changes.outputs.api == 'true'
+    strategy:
+      matrix:
+        project: ${{ fromJSON(needs.changes.outputs.projects) }}
+    env:
+      PROJECT: ${{ matrix.project }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -106,70 +94,36 @@ jobs:
       - name: Restore dependencies
         run: dotnet restore
 
-      - name: Build Api (Release)
+      - name: Build (Release)
         run: >
-          dotnet build src/Api/Api.csproj -c Release --no-restore
-          /p:TreatWarningsAsErrors=true
+          dotnet build "src/$PROJECT/$PROJECT.csproj" -c Release
+          --no-restore /p:TreatWarningsAsErrors=true
 
       - name: Test with coverage
         run: >
-          dotnet test tests/Api.Tests/Api.Tests.csproj -c Release
-          --coverage --coverage-output-format cobertura
+          dotnet test "tests/$PROJECT.Tests/$PROJECT.Tests.csproj"
+          -c Release --coverage --coverage-output-format cobertura
 
       - name: Upload coverage report
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: coverage-report-api
+          name: coverage-report-${{ matrix.project }}
           path: "**/*.cobertura.xml"
           retention-days: 14
 
-  test-worker:
-    name: Test Worker
+  security:
+    name: Security
     runs-on: [self-hosted]
     timeout-minutes: 15
     permissions:
       contents: read
     needs: [changes]
-    if: needs.changes.outputs.worker == 'true'
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-
-      - name: Set up .NET SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: ${{ inputs.dotnet-version || '10.0.x' }}
-
-      - name: Restore dependencies
-        run: dotnet restore
-
-      - name: Build Worker (Release)
-        run: >
-          dotnet build src/Worker/Worker.csproj -c Release --no-restore
-          /p:TreatWarningsAsErrors=true
-
-      - name: Test with coverage
-        run: >
-          dotnet test tests/Worker.Tests/Worker.Tests.csproj -c Release
-          --coverage --coverage-output-format cobertura
-
-      - name: Upload coverage report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-report-worker
-          path: "**/*.cobertura.xml"
-          retention-days: 14
-
-  security-api:
-    name: Security Api
-    runs-on: [self-hosted]
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    needs: [changes]
-    if: needs.changes.outputs.api == 'true'
+    strategy:
+      matrix:
+        project: ${{ fromJSON(needs.changes.outputs.projects) }}
+    env:
+      PROJECT: ${{ matrix.project }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -184,10 +138,10 @@ jobs:
 
       - name: Check for vulnerable packages
         run: >
-          dotnet list src/Api/Api.csproj package --vulnerable
-          --include-transitive | tee audit.log;
-          dotnet list tests/Api.Tests/Api.Tests.csproj package
-          --vulnerable --include-transitive | tee -a audit.log;
+          dotnet list "src/$PROJECT/$PROJECT.csproj" package
+          --vulnerable --include-transitive | tee audit.log;
+          dotnet list "tests/$PROJECT.Tests/$PROJECT.Tests.csproj"
+          package --vulnerable --include-transitive | tee -a audit.log;
           if grep -q "has the following vulnerable packages" audit.log;
           then echo "::error::Vulnerable NuGet packages found";
           exit 1; fi;
@@ -195,43 +149,26 @@ jobs:
 
       - name: Report deprecated packages
         run: >
-          dotnet list src/Api/Api.csproj package --deprecated;
-          dotnet list tests/Api.Tests/Api.Tests.csproj package
-          --deprecated
+          dotnet list "src/$PROJECT/$PROJECT.csproj" package
+          --deprecated;
+          dotnet list "tests/$PROJECT.Tests/$PROJECT.Tests.csproj"
+          package --deprecated
 
-  security-worker:
-    name: Security Worker
+  verify:
+    name: Verify
     runs-on: [self-hosted]
-    timeout-minutes: 15
+    timeout-minutes: 5
     permissions:
       contents: read
-    needs: [changes]
-    if: needs.changes.outputs.worker == 'true'
+    needs: [changes, test, security]
+    if: always()
     steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-
-      - name: Set up .NET SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: ${{ inputs.dotnet-version || '10.0.x' }}
-
-      - name: Restore dependencies
-        run: dotnet restore
-
-      - name: Check for vulnerable packages
+      - name: Verify test and security results
         run: >
-          dotnet list src/Worker/Worker.csproj package --vulnerable
-          --include-transitive | tee audit.log;
-          dotnet list tests/Worker.Tests/Worker.Tests.csproj package
-          --vulnerable --include-transitive | tee -a audit.log;
-          if grep -q "has the following vulnerable packages" audit.log;
-          then echo "::error::Vulnerable NuGet packages found";
-          exit 1; fi;
-          rm -f audit.log
-
-      - name: Report deprecated packages
-        run: >
-          dotnet list src/Worker/Worker.csproj package --deprecated;
-          dotnet list tests/Worker.Tests/Worker.Tests.csproj package
-          --deprecated
+          for r in
+          "${{ needs.changes.result }}"
+          "${{ needs.test.result }}"
+          "${{ needs.security.result }}";
+          do case "$r" in success|skipped) :;;
+          *) echo "::error::Unsatisfied result: $r"; exit 1;; esac;
+          done

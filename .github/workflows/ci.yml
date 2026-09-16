@@ -18,5 +18,3 @@ jobs:
       contents: read
     with:
       dotnet-version: 10.0.x
-      api-paths: 'src/Api/** tests/Api.Tests/**'
-      worker-paths: 'src/Worker/** tests/Worker.Tests/**'
