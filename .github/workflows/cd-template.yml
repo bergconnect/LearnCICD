@@ -120,6 +120,9 @@ jobs:
     name: Publish image
     runs-on: [self-hosted]
     needs: [detect, version]
+    if: >
+      needs.detect.outputs.matrix != '' &&
+      needs.detect.outputs.matrix != '[]'
     timeout-minutes: 20
     permissions:
       contents: read
@@ -170,7 +173,10 @@ jobs:
     name: Update image tag
     runs-on: [self-hosted]
     needs: [publish, version, detect]
-    if: always()
+    if: >
+      always() &&
+      needs.detect.outputs.matrix != '' &&
+      needs.detect.outputs.matrix != '[]'
     timeout-minutes: 5
     permissions:
       contents: write
