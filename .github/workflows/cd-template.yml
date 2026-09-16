@@ -2,27 +2,6 @@ name: CD template
 
 on:
   workflow_call:
-    inputs:
-      project-path:
-        description: 'Pad naar het API-csproj'
-        required: false
-        default: 'src/Api/Api.csproj'
-        type: string
-      image-name:
-        description: 'Image-naam zonder registry-host'
-        required: false
-        default: 'beheerder/learncicd'
-        type: string
-      values-file:
-        description: 'Helm values-bestand waarvan de image-tag wordt bijgewerkt'
-        required: false
-        default: 'charts/learncicd/values-devtest.yaml'
-        type: string
-      tag-branch:
-        description: 'Branch voor de image-tag-update-PR'
-        required: false
-        default: 'ci/image-tag-update'
-        type: string
     secrets:
       GITEA_TOKEN:
         required: true
@@ -43,6 +22,69 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  detect:
+    name: Detect changed projects
+    runs-on: [self-hosted]
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.discover.outputs.matrix }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Discover changed projects
+        id: discover
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+        run: >
+          FILES=$(git diff --name-only "$BEFORE" "$AFTER" 2>/dev/null
+          || git diff --name-only HEAD~1 HEAD);
+          PROJECTS=$(ls src);
+          SELECTED=""; set -f;
+          while IFS= read -r f; do
+          MATCHED=false;
+          case "$f" in
+          global.json|version.json|*.sln|Directory.*)
+          SELECTED="$PROJECTS"; MATCHED=true;;
+          .github/workflows/cd.yml|.github/workflows/cd-template.yml)
+          SELECTED="$PROJECTS"; MATCHED=true;;
+          esac;
+          if [ "$MATCHED" = false ]; then
+          for P in $PROJECTS; do
+          case "$f" in src/$P/**)
+          case " $SELECTED " in *" $P "*) :;;
+          *) SELECTED="$SELECTED $P";; esac;
+          MATCHED=true; break;; esac; done; fi;
+          if [ "$MATCHED" = false ]; then
+          case "$f" in
+          src/*/**|tests/*|.github/*|charts/*|argocd/*)
+          :;;
+          docs/*|*.md|.gitignore|LICENSE)
+          :;;
+          *)
+          SELECTED="$PROJECTS";;
+          esac; fi;
+          done <<< "$FILES";
+          if [ -z "$FILES" ]; then SELECTED="$PROJECTS"; fi;
+          MATRIX_JSON="[]";
+          for P in $SELECTED; do
+          case "$P" in
+          Api) SUFFIX="learncicd"; BRANCH="ci/image-tag-update";;
+          *) LOW=$(echo "$P" | tr '[:upper:]' '[:lower:]');
+          SUFFIX="learncicd-$LOW"; BRANCH="ci/image-tag-update-$LOW";;
+          esac;
+          ITEM=$(jq -n --arg p "$P" --arg s "$SUFFIX" --arg b "$BRANCH"
+          '{project:$p,suffix:$s,branch:$b}');
+          MATRIX_JSON=$(echo "$MATRIX_JSON" | jq -c --argjson i "$ITEM"
+          '. + [$i]');
+          done;
+          echo "matrix=$MATRIX_JSON" >> "$GITHUB_OUTPUT"
+
   version:
     name: Version
     runs-on: [self-hosted]
@@ -77,13 +119,18 @@ jobs:
   publish:
     name: Publish image
     runs-on: [self-hosted]
-    needs: [version]
+    needs: [detect, version]
     timeout-minutes: 20
     permissions:
       contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ${{ fromJSON(needs.detect.outputs.matrix) }}
     env:
+      PROJECT: ${{ matrix.release.project }}
+      SUFFIX: ${{ matrix.release.suffix }}
       IMAGE_HOST: ${{ vars.GITEA_HOST }}
-      IMAGE_NAME: ${{ inputs.image-name || 'beheerder/learncicd' }}
       VER: ${{ needs.version.outputs.semVer }}
     steps:
       - name: Check out code
@@ -91,14 +138,14 @@ jobs:
 
       - name: Build image archive with dotnet publish
         run: >
-          dotnet publish ${{ inputs.project-path || 'src/Api/Api.csproj' }}
+          dotnet publish "src/$PROJECT/$PROJECT.csproj"
           --os linux --arch x64
           -c Release
           -p:ContainerBaseImage=mcr.microsoft.com/dotnet/aspnet:10.0
-          -p:ContainerRepository=$IMAGE_HOST/$IMAGE_NAME
+          -p:ContainerRepository=$IMAGE_HOST/beheerder/$SUFFIX
           -p:ContainerImageTag=$VER
           /t:PublishContainer
-          -p:ContainerArchiveOutputPath=/tmp/image.tar
+          -p:ContainerArchiveOutputPath=/tmp/image-$PROJECT.tar
 
       - name: Log in to Gitea registry
         env:
@@ -113,10 +160,11 @@ jobs:
       - name: Push version tag with Skopeo
         env:
           XDG_RUNTIME_DIR: ${{ runner.temp }}/runtime
+          IMAGE: ${{ vars.GITEA_HOST }}/beheerder/${{ matrix.release.suffix }}
         run: >
           skopeo copy
-          docker-archive:/tmp/image.tar:$IMAGE_HOST/$IMAGE_NAME:$VER
-          docker://$IMAGE_HOST/$IMAGE_NAME:$VER
+          docker-archive:/tmp/image-$PROJECT.tar:$IMAGE:$VER
+          docker://$IMAGE:$VER
 
   update-image-tag:
     name: Update image tag

@@ -3,13 +3,13 @@ name: CD
 on:
   push:
     branches: [main]
-    paths:
-      - 'src/Api/**'
-      - 'tests/Api.Tests/**'
-      - 'global.json'
-      - 'version.json'
-      - '.github/workflows/cd.yml'
-      - '.github/workflows/cd-template.yml'
+    paths-ignore:
+      - 'charts/**'
+      - 'argocd/**'
+      - 'docs/**'
+      - '**/*.md'
+      - '.gitignore'
+      - 'LICENSE'
 
 permissions: {}
 
@@ -24,9 +24,4 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    with:
-      project-path: src/Api/Api.csproj
-      image-name: beheerder/learncicd
-      values-file: charts/learncicd/values-devtest.yaml
-      tag-branch: ci/image-tag-update
     secrets: inherit
