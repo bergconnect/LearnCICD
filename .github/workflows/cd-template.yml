@@ -166,34 +166,58 @@ jobs:
           docker-archive:/tmp/image-$PROJECT.tar:$IMAGE:$VER
           docker://$IMAGE:$VER
 
-  update-image-tag:
+  update-tag:
     name: Update image tag
     runs-on: [self-hosted]
-    needs: [publish, version]
+    needs: [publish, version, detect]
     timeout-minutes: 5
     permissions:
       contents: write
       pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ${{ fromJSON(needs.detect.outputs.matrix) }}
+    env:
+      PROJECT: ${{ matrix.release.project }}
+      SUFFIX: ${{ matrix.release.suffix }}
+      BRANCH: ${{ matrix.release.branch }}
+      IMAGE_HOST: ${{ vars.GITEA_HOST }}
+      VER: ${{ needs.version.outputs.semVer }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GH_PAT }}
 
-      - name: Set image tag to published version
+      - name: Check published image exists
+        id: gate
         env:
-          VALUES_FILE: ${{ inputs.values-file }}
+          XDG_RUNTIME_DIR: ${{ runner.temp }}/runtime
         run: >
-          VALUES_FILE="${VALUES_FILE:-charts/learncicd/values-devtest.yaml}";
+          mkdir -p "$XDG_RUNTIME_DIR";
+          IMAGE="$IMAGE_HOST/beheerder/$SUFFIX";
+          skopeo login
+          --username ${{ vars.GITEA_USER }}
+          --password ${{ secrets.GITEA_TOKEN }}
+          ${{ vars.GITEA_HOST }} > /dev/null;
+          if skopeo inspect --raw
+          docker://$IMAGE:$VER > /dev/null 2>&1;
+          then echo "proceed=true" >> "$GITHUB_OUTPUT";
+          else echo "Image $IMAGE:$VER not published, skipping";
+          echo "proceed=false" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Set image tag to published version
+        if: steps.gate.outputs.proceed == 'true'
+        run: >
+          VALUES_FILE="charts/$SUFFIX/values-devtest.yaml";
           TAG="${{ needs.version.outputs.semVer }}"
-          yq -i '.image.tag = strenv(TAG)' "$VALUES_FILE"
+          yq -i '.image.tag = strenv(TAG)' "$VALUES_FILE";
+          echo "VALUES_FILE=$VALUES_FILE" >> "$GITHUB_ENV"
 
       - name: Commit and push tag update
-        env:
-          BRANCH: ${{ inputs.tag-branch || 'ci/image-tag-update' }}
-          VALUES_FILE: ${{ inputs.values-file }}
+        if: steps.gate.outputs.proceed == 'true'
         run: >
-          VALUES_FILE="${VALUES_FILE:-charts/learncicd/values-devtest.yaml}";
           VERSION="${{ needs.version.outputs.semVer }}";
           git config user.name "gitea-actions[bot]";
           git config user.email "gitea-actions[bot]@users.noreply.gitea";
@@ -204,8 +228,8 @@ jobs:
 
       - name: Open update PR
         id: open_pr
+        if: steps.gate.outputs.proceed == 'true'
         env:
-          BRANCH: ${{ inputs.tag-branch || 'ci/image-tag-update' }}
           TOKEN: ${{ secrets.GH_PAT }}
           API: ${{ github.api_url }}
           REPO: ${{ github.repository }}
@@ -233,6 +257,7 @@ jobs:
           echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
       - name: Enable auto-merge
+        if: steps.gate.outputs.proceed == 'true'
         env:
           TOKEN: ${{ secrets.GH_PAT }}
           API: ${{ github.api_url }}
