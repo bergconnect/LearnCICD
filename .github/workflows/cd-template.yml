@@ -2,6 +2,17 @@ name: CD template
 
 on:
   workflow_call:
+    inputs:
+      api-image:
+        description: 'Volledige image-naam voor het Api-project'
+        required: false
+        default: 'beheerder/learncicd'
+        type: string
+      image-prefix:
+        description: 'Prefix voor overige project-images (<prefix>-<klein>)'
+        required: false
+        default: 'beheerder/learncicd'
+        type: string
     secrets:
       GITEA_TOKEN:
         required: true
@@ -35,7 +46,11 @@ jobs:
         env:
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.event.after }}
+          API_IMAGE: ${{ inputs.api-image }}
+          IMAGE_PREFIX: ${{ inputs.image-prefix }}
         run: >
+          API_IMAGE="${API_IMAGE:-beheerder/learncicd}";
+          IMAGE_PREFIX="${IMAGE_PREFIX:-beheerder/learncicd}";
           FILES=$(git diff --name-only "$BEFORE" "$AFTER" 2>/dev/null
           || git diff --name-only HEAD~1 HEAD);
           PROJECTS=$(ls src);
@@ -68,9 +83,9 @@ jobs:
           MATRIX_JSON="[]";
           for P in $SELECTED; do
           case "$P" in
-          Api) IMAGE="beheerder/learncicd";;
+          Api) IMAGE="$API_IMAGE";;
           *) LOW=$(echo "$P" | tr '[:upper:]' '[:lower:]');
-          IMAGE="beheerder/learncicd-$LOW";;
+          IMAGE="$IMAGE_PREFIX-$LOW";;
           esac;
           ITEM=$(jq -n --arg p "$P" --arg i "$IMAGE"
           '{project:$p,image:$i}');

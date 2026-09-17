@@ -24,4 +24,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    with:
+      api-image: beheerder/learncicd
+      image-prefix: beheerder/learncicd
     secrets: inherit
