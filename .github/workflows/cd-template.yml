@@ -3,13 +3,13 @@ name: CD template
 on:
   workflow_call:
     inputs:
-      api-image:
-        description: 'Volledige image-naam voor het Api-project'
+      registry-host:
+        description: 'Registry-host voor image-referenties'
         required: false
-        default: 'beheerder'
+        default: 'go.berg-connect.nl'
         type: string
-      image-prefix:
-        description: 'Prefix voor overige project-images (<prefix>-<klein>)'
+      repo:
+        description: 'Repository-namespace voor images'
         required: false
         default: 'beheerder'
         type: string
@@ -46,11 +46,7 @@ jobs:
         env:
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.event.after }}
-          API_IMAGE: ${{ inputs.api-image }}
-          IMAGE_PREFIX: ${{ inputs.image-prefix }}
         run: >
-          API_IMAGE="${API_IMAGE:-beheerder}";
-          IMAGE_PREFIX="${IMAGE_PREFIX:-beheerder}";
           FILES=$(git diff --name-only "$BEFORE" "$AFTER" 2>/dev/null
           || git diff --name-only HEAD~1 HEAD);
           PROJECTS=$(ls src);
@@ -82,11 +78,7 @@ jobs:
           if [ -z "$FILES" ]; then SELECTED="$PROJECTS"; fi;
           MATRIX_JSON="[]";
           for P in $SELECTED; do
-          case "$P" in
-          Api) IMAGE="$API_IMAGE";;
-          *) LOW=$(echo "$P" | tr '[:upper:]' '[:lower:]');
-          IMAGE="$IMAGE_PREFIX-$LOW";;
-          esac;
+          IMAGE=$(echo "$P" | tr '[:upper:]' '[:lower:]');
           ITEM=$(jq -n --arg p "$P" --arg i "$IMAGE"
           '{project:$p,image:$i}');
           MATRIX_JSON=$(echo "$MATRIX_JSON" | jq -c --argjson i "$ITEM"
@@ -110,8 +102,9 @@ jobs:
         release: ${{ fromJSON(needs.detect.outputs.matrix) }}
     env:
       PROJECT: ${{ matrix.release.project }}
-      IMAGE_REPO: ${{ matrix.release.image }}
-      IMAGE_HOST: ${{ vars.GITEA_HOST }}
+      IMAGE_NAME: ${{ matrix.release.image }}
+      REGISTRY: ${{ inputs.registry-host || 'go.berg-connect.nl' }}
+      REPO: ${{ inputs.repo || 'beheerder' }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -138,7 +131,7 @@ jobs:
           --os linux --arch x64
           -c Release
           -p:ContainerBaseImage=mcr.microsoft.com/dotnet/aspnet:10.0
-          -p:ContainerRepository=$IMAGE_HOST/$IMAGE_REPO
+          -p:ContainerRepository=$REGISTRY/$REPO/$IMAGE_NAME
           -p:ContainerImageTag=$VER
           /t:PublishContainer
           -p:ContainerArchiveOutputPath=/tmp/image-$PROJECT.tar
@@ -151,13 +144,13 @@ jobs:
           skopeo login
           --username ${{ vars.GITEA_USER }}
           --password ${{ secrets.GITEA_TOKEN }}
-          ${{ vars.GITEA_HOST }}
+          $REGISTRY
 
       - name: Push version tag with Skopeo
         env:
           XDG_RUNTIME_DIR: ${{ runner.temp }}/runtime
-          IMAGE: ${{ vars.GITEA_HOST }}/${{ matrix.release.image }}
         run: >
+          IMAGE="$REGISTRY/$REPO/$IMAGE_NAME";
           skopeo copy
           docker-archive:/tmp/image-$PROJECT.tar:$IMAGE:$VER
           docker://$IMAGE:$VER

@@ -25,6 +25,6 @@ jobs:
       contents: write
       pull-requests: write
     with:
-      api-image: beheerder
-      image-prefix: beheerder
+      registry-host: go.berg-connect.nl
+      repo: beheerder
     secrets: inherit
