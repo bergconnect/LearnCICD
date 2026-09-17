@@ -24,4 +24,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+    with:
+      registry-host: ${{ vars.GITEA_LOCAL }}
+      repo: beheerder
     secrets: inherit
