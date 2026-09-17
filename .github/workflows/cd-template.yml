@@ -141,7 +141,7 @@ jobs:
           XDG_RUNTIME_DIR: ${{ runner.temp }}/runtime
         run: >
           mkdir -p "$XDG_RUNTIME_DIR";
-          skopeo login
+          skopeo login --tls-verify=false
           --username ${{ vars.GITEA_USER }}
           --password ${{ secrets.GITEA_TOKEN }}
           $REGISTRY
@@ -151,6 +151,6 @@ jobs:
           XDG_RUNTIME_DIR: ${{ runner.temp }}/runtime
         run: >
           IMAGE="$REGISTRY/$REPO/$IMAGE_NAME";
-          skopeo copy
+          skopeo copy --tls-verify=false
           docker-archive:/tmp/image-$PROJECT.tar:$IMAGE:$VER
           docker://$IMAGE:$VER

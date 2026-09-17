@@ -37,7 +37,7 @@ jobs:
       - name: Check version exists as image tag
         id: check
         env:
-          IMAGE: ${{ vars.GITEA_HOST }}/beheerder/api
+          IMAGE: ${{ vars.GITEA_LOCAL }}/beheerder/api
           GITEA_USER: ${{ vars.GITEA_USER }}
           GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
         run: >
@@ -45,7 +45,7 @@ jobs:
           case "$VERSION" in ''|*[!0-9.]*)
           echo "::error::Ongeldige version-input '$VERSION'
           (alleen cijfers en punten)"; exit 1;; esac;
-          skopeo inspect --raw
+          skopeo inspect --tls-verify=false --raw
           --creds "$GITEA_USER:$GITEA_TOKEN"
           docker://$IMAGE:$VERSION > /dev/null
           || { echo "::error::Image-tag $VERSION bestaat niet

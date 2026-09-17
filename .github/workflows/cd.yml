@@ -25,6 +25,6 @@ jobs:
       contents: write
       pull-requests: write
     with:
-      registry-host: go.berg-connect.nl
+      registry-host: ${{ vars.GITEA_LOCAL }}
       repo: beheerder
     secrets: inherit
