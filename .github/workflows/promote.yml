@@ -72,13 +72,13 @@ jobs:
           ENV: ${{ inputs.environment }}
           VERSION: ${{ needs.validate.outputs.version }}
         run: >
-          FILE="charts/learncicd/values-$ENV.yaml";
+          FILE=".infra/learncicd/values-$ENV.yaml";
           CURRENT="$(yq '.image.tag' "$FILE")";
           if [ "$CURRENT" = "$VERSION" ]; then
           echo "Omgeving $ENV staat al op $VERSION —
           niets te doen"; exit 0; fi;
           if [ "$ENV" = "productie" ]; then
-            ACC="$(yq '.image.tag' charts/learncicd/values-acceptatie.yaml)";
+            ACC="$(yq '.image.tag' .infra/learncicd/values-acceptatie.yaml)";
             if [ "$ACC" != "$VERSION" ]; then
           echo "::error::Sequentie-schending: acceptatie
           staat op $ACC, gevraagd $VERSION voor productie";
@@ -93,7 +93,7 @@ jobs:
           BRANCH: "ci/promote-${{ inputs.environment }}-\
             ${{ needs.validate.outputs.version }}"
         run: >
-          FILE="charts/learncicd/values-$ENV.yaml";
+          FILE=".infra/learncicd/values-$ENV.yaml";
           if git diff --quiet "$FILE"; then
           echo "Geen wijziging — klaar";
           echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; fi;
