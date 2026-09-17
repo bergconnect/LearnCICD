@@ -70,12 +70,16 @@ jobs:
           MATRIX_JSON="[]";
           for P in $SELECTED; do
           case "$P" in
-          Api) SUFFIX="learncicd"; BRANCH="ci/image-tag-update";;
+          Api) IMAGE="beheerder/learncicd";
+          VALUES="charts/learncicd/values-devtest.yaml";
+          BRANCH="ci/image-tag-update";;
           *) LOW=$(echo "$P" | tr '[:upper:]' '[:lower:]');
-          SUFFIX="learncicd-$LOW"; BRANCH="ci/image-tag-update-$LOW";;
+          IMAGE="beheerder/learncicd-$LOW";
+          VALUES="charts/learncicd-$LOW/values-devtest.yaml";
+          BRANCH="ci/image-tag-update-$LOW";;
           esac;
-          ITEM=$(jq -n --arg p "$P" --arg s "$SUFFIX" --arg b "$BRANCH"
-          '{project:$p,suffix:$s,branch:$b}');
+          ITEM=$(jq -n --arg p "$P" --arg i "$IMAGE" --arg v "$VALUES"
+          --arg b "$BRANCH" '{project:$p,image:$i,values:$v,branch:$b}');
           MATRIX_JSON=$(echo "$MATRIX_JSON" | jq -c --argjson i "$ITEM"
           '. + [$i]');
           done;
@@ -97,7 +101,7 @@ jobs:
         release: ${{ fromJSON(needs.detect.outputs.matrix) }}
     env:
       PROJECT: ${{ matrix.release.project }}
-      SUFFIX: ${{ matrix.release.suffix }}
+      IMAGE_REPO: ${{ matrix.release.image }}
       IMAGE_HOST: ${{ vars.GITEA_HOST }}
     steps:
       - name: Check out code
@@ -125,7 +129,7 @@ jobs:
           --os linux --arch x64
           -c Release
           -p:ContainerBaseImage=mcr.microsoft.com/dotnet/aspnet:10.0
-          -p:ContainerRepository=$IMAGE_HOST/beheerder/$SUFFIX
+          -p:ContainerRepository=$IMAGE_HOST/$IMAGE_REPO
           -p:ContainerImageTag=$VER
           /t:PublishContainer
           -p:ContainerArchiveOutputPath=/tmp/image-$PROJECT.tar
@@ -143,7 +147,7 @@ jobs:
       - name: Push version tag with Skopeo
         env:
           XDG_RUNTIME_DIR: ${{ runner.temp }}/runtime
-          IMAGE: ${{ vars.GITEA_HOST }}/beheerder/${{ matrix.release.suffix }}
+          IMAGE: ${{ vars.GITEA_HOST }}/${{ matrix.release.image }}
         run: >
           skopeo copy
           docker-archive:/tmp/image-$PROJECT.tar:$IMAGE:$VER
@@ -167,7 +171,8 @@ jobs:
         release: ${{ fromJSON(needs.detect.outputs.matrix) }}
     env:
       PROJECT: ${{ matrix.release.project }}
-      SUFFIX: ${{ matrix.release.suffix }}
+      IMAGE_REPO: ${{ matrix.release.image }}
+      VALUES_FILE: ${{ matrix.release.values }}
       BRANCH: ${{ matrix.release.branch }}
       IMAGE_HOST: ${{ vars.GITEA_HOST }}
     steps:
@@ -197,7 +202,7 @@ jobs:
           XDG_RUNTIME_DIR: ${{ runner.temp }}/runtime
         run: >
           mkdir -p "$XDG_RUNTIME_DIR";
-          IMAGE="$IMAGE_HOST/beheerder/$SUFFIX";
+          IMAGE="$IMAGE_HOST/$IMAGE_REPO";
           skopeo login
           --username ${{ vars.GITEA_USER }}
           --password ${{ secrets.GITEA_TOKEN }}
@@ -211,10 +216,8 @@ jobs:
       - name: Set image tag to published version
         if: steps.gate.outputs.proceed == 'true'
         run: >
-          VALUES_FILE="charts/$SUFFIX/values-devtest.yaml";
           TAG="$VER"
-          yq -i '.image.tag = strenv(TAG)' "$VALUES_FILE";
-          echo "VALUES_FILE=$VALUES_FILE" >> "$GITHUB_ENV"
+          yq -i '.image.tag = strenv(TAG)' "$VALUES_FILE"
 
       - name: Commit and push tag update
         if: steps.gate.outputs.proceed == 'true'
