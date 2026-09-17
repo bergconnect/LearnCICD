@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths-ignore:
-      - 'charts/**'
+      - '.infra/**'
       - 'argocd/**'
       - 'docs/**'
       - '**/*.md'
