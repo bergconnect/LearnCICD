@@ -5,8 +5,6 @@ on:
     secrets:
       GITEA_TOKEN:
         required: true
-      GH_PAT:
-        required: true
 
 env:
   DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
@@ -70,16 +68,12 @@ jobs:
           MATRIX_JSON="[]";
           for P in $SELECTED; do
           case "$P" in
-          Api) IMAGE="beheerder/learncicd";
-          VALUES="charts/learncicd/values-devtest.yaml";
-          BRANCH="ci/image-tag-update";;
+          Api) IMAGE="beheerder/learncicd";;
           *) LOW=$(echo "$P" | tr '[:upper:]' '[:lower:]');
-          IMAGE="beheerder/learncicd-$LOW";
-          VALUES="charts/learncicd-$LOW/values-devtest.yaml";
-          BRANCH="ci/image-tag-update-$LOW";;
+          IMAGE="beheerder/learncicd-$LOW";;
           esac;
-          ITEM=$(jq -n --arg p "$P" --arg i "$IMAGE" --arg v "$VALUES"
-          --arg b "$BRANCH" '{project:$p,image:$i,values:$v,branch:$b}');
+          ITEM=$(jq -n --arg p "$P" --arg i "$IMAGE"
+          '{project:$p,image:$i}');
           MATRIX_JSON=$(echo "$MATRIX_JSON" | jq -c --argjson i "$ITEM"
           '. + [$i]');
           done;
@@ -152,134 +146,3 @@ jobs:
           skopeo copy
           docker-archive:/tmp/image-$PROJECT.tar:$IMAGE:$VER
           docker://$IMAGE:$VER
-
-  update-tag:
-    name: Update image tag
-    runs-on: [self-hosted]
-    needs: [publish, detect]
-    if: >
-      always() &&
-      needs.detect.outputs.matrix != '' &&
-      needs.detect.outputs.matrix != '[]'
-    timeout-minutes: 5
-    permissions:
-      contents: write
-      pull-requests: write
-    strategy:
-      fail-fast: false
-      matrix:
-        release: ${{ fromJSON(needs.detect.outputs.matrix) }}
-    env:
-      PROJECT: ${{ matrix.release.project }}
-      IMAGE_REPO: ${{ matrix.release.image }}
-      VALUES_FILE: ${{ matrix.release.values }}
-      BRANCH: ${{ matrix.release.branch }}
-      IMAGE_HOST: ${{ vars.GITEA_HOST }}
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GH_PAT }}
-          fetch-depth: 0
-
-      - name: Set up .NET SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 10.0.x
-
-      - name: Restore .NET tools
-        run: dotnet tool restore
-
-      - name: Determine version
-        run: >
-          VER=$(cd "src/$PROJECT" && dotnet nbgv get-version -v SemVer2);
-          echo "VER=$VER" >> "$GITHUB_ENV";
-          echo "Version $VER for $PROJECT"
-
-      - name: Check published image exists
-        id: gate
-        env:
-          XDG_RUNTIME_DIR: ${{ runner.temp }}/runtime
-        run: >
-          mkdir -p "$XDG_RUNTIME_DIR";
-          IMAGE="$IMAGE_HOST/$IMAGE_REPO";
-          skopeo login
-          --username ${{ vars.GITEA_USER }}
-          --password ${{ secrets.GITEA_TOKEN }}
-          ${{ vars.GITEA_HOST }} > /dev/null;
-          if skopeo inspect --raw
-          docker://$IMAGE:$VER > /dev/null 2>&1;
-          then echo "proceed=true" >> "$GITHUB_OUTPUT";
-          else echo "Image $IMAGE:$VER not published, skipping";
-          echo "proceed=false" >> "$GITHUB_OUTPUT"; fi
-
-      - name: Set image tag to published version
-        if: steps.gate.outputs.proceed == 'true'
-        run: >
-          TAG="$VER"
-          yq -i '.image.tag = strenv(TAG)' "$VALUES_FILE"
-
-      - name: Commit and push tag update
-        if: steps.gate.outputs.proceed == 'true'
-        run: >
-          VERSION="$VER";
-          git config user.name "gitea-actions[bot]";
-          git config user.email "gitea-actions[bot]@users.noreply.gitea";
-          git switch -C "$BRANCH";
-          git add "$VALUES_FILE";
-          git commit -m "ci: update devtest image tag to $VERSION";
-          git push --force origin "$BRANCH"
-
-      - name: Open update PR
-        id: open_pr
-        if: steps.gate.outputs.proceed == 'true'
-        env:
-          TOKEN: ${{ secrets.GH_PAT }}
-          API: ${{ github.api_url }}
-          REPO: ${{ github.repository }}
-        run: >
-          VERSION="$VER";
-          STATUS=$(curl -s -o response.json -w "%{http_code}"
-          -X POST "$API/repos/$REPO/pulls"
-          -H "Authorization: token $TOKEN"
-          -H "Content-Type: application/json"
-          -d "{\"title\":\"ci: update devtest image tag
-          to $VERSION\",\"body\":\"Automated tag update
-          for image published from
-          ${{ github.sha }}.\",\"head\":\"$BRANCH\",\"base\":\"main\"}");
-          cat response.json;
-          if [ "$STATUS" != "201" ] && ! grep -q "already exists" response.json;
-          then echo "::error::Failed to open PR (HTTP $STATUS)"; exit 1; fi;
-          PR_NUMBER=$(jq -r '.number // empty' response.json);
-          if [ -z "$PR_NUMBER" ]; then
-          PR_NUMBER=$(curl -s -H "Authorization: token $TOKEN"
-          "$API/repos/$REPO/pulls?state=open"
-          | jq -r --arg BRANCH "$BRANCH"
-          '.[] | select(.head.ref == $BRANCH) | .number' | head -n1); fi;
-          if [ -z "$PR_NUMBER" ]; then
-          echo "::error::PR number not found"; exit 1; fi;
-          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
-
-      - name: Enable auto-merge
-        if: steps.gate.outputs.proceed == 'true'
-        env:
-          TOKEN: ${{ secrets.GH_PAT }}
-          API: ${{ github.api_url }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.open_pr.outputs.pr_number }}
-        run: >
-          PR_JSON=$(curl -s -H "Authorization: Bearer $TOKEN"
-          "$API/repos/$REPO/pulls/$PR_NUMBER");
-          if [ "$(echo "$PR_JSON" | jq -r '.auto_merge')" != "null" ];
-          then echo "auto-merge al actief"; exit 0; fi;
-          NODE=$(echo "$PR_JSON" | jq -r '.node_id');
-          QUERY='mutation($id:ID!){enablePullRequestAutoMerge
-          (input:{pullRequestId:$id,mergeMethod:MERGE})
-          {pullRequest{number}}}';
-          jq -n --arg q "$QUERY" --arg id "$NODE"
-          '{query:$q,variables:{id:$id}}' > gql.json;
-          RESP=$(curl -s -X POST -H "Authorization: Bearer $TOKEN"
-          -H "Content-Type: application/json" "$API/graphql" -d @gql.json);
-          echo "$RESP"; rm -f gql.json;
-          if echo "$RESP" | jq -e '.errors' > /dev/null;
-          then echo "::error::auto-merge inschakelen mislukt"; exit 1; fi
