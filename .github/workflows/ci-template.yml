@@ -58,7 +58,7 @@ jobs:
           case "$f" in
           .github/*)
           WORKFLOWS=true;;
-          charts/*|argocd/*|docs/*|*.md|.gitignore|LICENSE)
+          .infra/*|argocd/*|docs/*|*.md|.gitignore|LICENSE)
           :;;
           *)
           SELECTED="$PROJECTS";;

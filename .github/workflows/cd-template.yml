@@ -67,7 +67,7 @@ jobs:
           MATCHED=true; break;; esac; done; fi;
           if [ "$MATCHED" = false ]; then
           case "$f" in
-          src/*/**|tests/*|.github/*|charts/*|argocd/*)
+          src/*/**|tests/*|.github/*|.infra/*|argocd/*)
           :;;
           docs/*|*.md|.gitignore|LICENSE)
           :;;

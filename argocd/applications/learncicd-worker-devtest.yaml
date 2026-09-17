@@ -8,11 +8,11 @@ spec:
   source:
     repoURL: https://github.com/bergconnect/LearnCICD.git
     targetRevision: HEAD
-    path: charts/learncicd-worker
+    path: .infra/learncicd-worker
     helm:
       valueFiles:
-        - $values/charts/learncicd-worker/values.yaml
-        - $values/charts/learncicd-worker/values-devtest.yaml
+        - $values/.infra/learncicd-worker/values.yaml
+        - $values/.infra/learncicd-worker/values-devtest.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: devtest
