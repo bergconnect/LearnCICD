@@ -78,7 +78,7 @@ jobs:
           if [ -z "$FILES" ]; then SELECTED="$PROJECTS"; fi;
           MATRIX_JSON="[]";
           for P in $SELECTED; do
-          IMAGE=$(echo "$P" | tr '[:upper:]' '[:lower:]');
+          IMAGE="learncicd-$(echo "$P" | tr '[:upper:]' '[:lower:]')";
           ITEM=$(jq -n --arg p "$P" --arg i "$IMAGE"
           '{project:$p,image:$i}');
           MATRIX_JSON=$(echo "$MATRIX_JSON" | jq -c --argjson i "$ITEM"
@@ -133,6 +133,7 @@ jobs:
           -p:ContainerBaseImage=mcr.microsoft.com/dotnet/aspnet:10.0
           -p:RegistryHost=$REGISTRY
           -p:RegistryNamespace=$REPO
+          -p:ImageShortName=$IMAGE_NAME
           -p:ContainerImageTag=$VER
           /t:PublishContainer
           -p:ContainerArchiveOutputPath=/tmp/image-$PROJECT.tar
