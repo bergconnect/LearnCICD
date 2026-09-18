@@ -43,3 +43,38 @@ grep -h '"version"' src/*/version.json
 ```
 
 Verwacht: een geldige SemVer2-string.
+
+## 3. CI/CD-koppeling
+
+1. Voeg één entry toe aan `.github/projects.json`:
+
+```json
+"<Naam>": {
+  "image_name": "<image>",
+  "chart": "<chart>"
+}
+```
+
+Gebruik kleine letters zonder spaties voor `<image>` en `<chart>` (bijvoorbeeld `billing` en `billing`).
+
+2. Verder niets aanpassen onder `.github/`: CI/CD ontdekt projecten automatisch via `ls src` en bouwt, test en publiceert elk geraakt project via de matrix; tag-branches volgen automatisch.
+
+## 4. Chart en ArgoCD-app
+
+1. Kopieer de worker-chart als startpunt:
+
+```bash
+cp -r .infra/learncicd-worker .infra/<chart>
+```
+
+2. Hernoem in de kopie alle helpers/labels van `learncicd-worker` naar `<chart>` (bestanden: `Chart.yaml`, `templates/_helpers.tpl`, `templates/deployment.yaml`, `templates/service.yaml`).
+3. Vul `.infra/<chart>/values.yaml` in (volledige `repository:`, port, pullPolicy, probes, resources — kopieer van de worker-chart) en `.infra/<chart>/values-devtest.yaml` (alleen `service.port` en `image.tag`).
+4. Maak `argocd/applications/<chart>-devtest.yaml` (kopieer `argocd/applications/learncicd-worker-devtest.yaml`) met `path: .infra/<chart>` en beide `valueFiles` naar de nieuwe chart.
+5. Valideer de chart:
+
+```bash
+helm lint .infra/<chart>
+helm template <chart>-devtest .infra/<chart> -f .infra/<chart>/values.yaml -f .infra/<chart>/values-devtest.yaml --namespace devtest | grep "image:"
+```
+
+Verwacht: `1 chart(s) linted, 0 failed` en één `image:`-regel met jouw repository en tag.
