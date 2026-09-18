@@ -5,12 +5,12 @@ run-name: Promote ${{ inputs.environment }} to ${{ inputs.version }}
 on:
   workflow_dispatch:
     inputs:
-      project:
-        description: 'Project'
+      image:
+        description: 'Image-naam (zonder registry/repo)'
         required: true
-        default: 'Api'
+        default: 'learncicd-api'
         type: choice
-        options: [Api, Worker]
+        options: [learncicd-api, learncicd-worker]
       environment:
         description: 'Doelomgeving'
         required: true
@@ -24,7 +24,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: promote-${{ inputs.project }}-${{ inputs.environment }}
+  group: promote-${{ inputs.image }}-${{ inputs.environment }}
   cancel-in-progress: false
 
 jobs:
@@ -44,16 +44,12 @@ jobs:
       - name: Check version exists as image tag
         id: check
         env:
-          PROJECT: ${{ inputs.project }}
+          IMAGE_NAME: ${{ inputs.image }}
           GITEA_USER: ${{ vars.GITEA_USER }}
           GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
         run: >
-          case "$PROJECT" in
-          Api) IMAGE_SUFFIX="learncicd-api"; CHART="learncicd";;
-          Worker) IMAGE_SUFFIX="learncicd-worker";
-          CHART="learncicd-worker";;
-          *) echo "::error::Onbekend project '$PROJECT'"; exit 1;; esac;
-          IMAGE="${{ vars.GITEA_LOCAL }}/beheerder/$IMAGE_SUFFIX";
+          CHART="${IMAGE_NAME%-api}";
+          IMAGE="${{ vars.GITEA_LOCAL }}/beheerder/$IMAGE_NAME";
           VERSION="${{ inputs.version }}";
           case "$VERSION" in ''|*[!0-9.]*)
           echo "::error::Ongeldige version-input '$VERSION'
@@ -106,7 +102,7 @@ jobs:
           ENV: ${{ inputs.environment }}
           VERSION: ${{ needs.validate.outputs.version }}
           CHART: ${{ needs.validate.outputs.chart }}
-          BRANCH: "ci/promote-${{ inputs.project }}-${{ inputs.environment }}-\
+          BRANCH: "ci/promote-${{ inputs.image }}-${{ inputs.environment }}-\
             ${{ needs.validate.outputs.version }}"
         run: >
           FILE=".infra/$CHART/values-$ENV.yaml";
@@ -126,9 +122,9 @@ jobs:
         if: steps.bump.outputs.changed == 'true'
         env:
           ENV: ${{ inputs.environment }}
-          PROJECT: ${{ inputs.project }}
+          IMAGE_NAME: ${{ inputs.image }}
           VERSION: ${{ needs.validate.outputs.version }}
-          BRANCH: "ci/promote-${{ inputs.project }}-${{ inputs.environment }}-\
+          BRANCH: "ci/promote-${{ inputs.image }}-${{ inputs.environment }}-\
             ${{ needs.validate.outputs.version }}"
           TOKEN: ${{ secrets.GH_PAT }}
           API: ${{ github.api_url }}
@@ -138,7 +134,7 @@ jobs:
           -X POST "$API/repos/$REPO/pulls"
           -H "Authorization: token $TOKEN"
           -H "Content-Type: application/json"
-          -d "{\"title\":\"ci: promote $PROJECT $ENV
+          -d "{\"title\":\"ci: promote $IMAGE_NAME $ENV
           to $VERSION\",\"body\":\"Promotie van image $VERSION
           naar $ENV
           (sequentie
