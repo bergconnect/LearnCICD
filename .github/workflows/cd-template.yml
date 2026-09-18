@@ -136,7 +136,7 @@ jobs:
           /t:PublishContainer
           -p:ContainerArchiveOutputPath=/tmp/image-$PROJECT.tar
 
-      - name: Log in to Gitea registry
+      - name: Push version tag with Skopeo
         env:
           XDG_RUNTIME_DIR: ${{ runner.temp }}/runtime
         run: >
@@ -144,12 +144,7 @@ jobs:
           skopeo login --tls-verify=false
           --username ${{ vars.GITEA_USER }}
           --password ${{ secrets.GITEA_TOKEN }}
-          $REGISTRY
-
-      - name: Push version tag with Skopeo
-        env:
-          XDG_RUNTIME_DIR: ${{ runner.temp }}/runtime
-        run: >
+          $REGISTRY;
           IMAGE="$REGISTRY/$REPO/$IMAGE_NAME";
           skopeo copy --tls-verify=false
           docker-archive:/tmp/image-$PROJECT.tar:$IMAGE:$VER
