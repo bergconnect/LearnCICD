@@ -131,7 +131,8 @@ jobs:
           --os linux --arch x64
           -c Release
           -p:ContainerBaseImage=mcr.microsoft.com/dotnet/aspnet:10.0
-          -p:ContainerRepository=$REGISTRY/$REPO/$IMAGE_NAME
+          -p:RegistryHost=$REGISTRY
+          -p:RegistryNamespace=$REPO
           -p:ContainerImageTag=$VER
           /t:PublishContainer
           -p:ContainerArchiveOutputPath=/tmp/image-$PROJECT.tar
