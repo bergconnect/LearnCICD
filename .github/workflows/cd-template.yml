@@ -8,7 +8,7 @@ on:
         required: false
         default: 'go.berg-connect.nl'
         type: string
-      repo:
+      repository:
         description: 'Repository-namespace voor images'
         required: false
         default: 'beheerder'
@@ -117,7 +117,7 @@ jobs:
       PROJECT: ${{ matrix.release.project }}
       IMAGE_NAME: ${{ matrix.release.image }}
       REGISTRY: ${{ inputs.registry-host || 'go.berg-connect.nl' }}
-      REPO: ${{ inputs.repo || 'beheerder' }}
+      REPOSITORY: ${{ inputs.repository || 'beheerder' }}
       BASE_IMAGE: ${{ inputs.base-image }}
     steps:
       - name: Check out code
@@ -147,14 +147,14 @@ jobs:
           -c Release
           -p:ContainerBaseImage=$BASE_IMAGE
           -p:RegistryHost=$REGISTRY
-          -p:RegistryNamespace=$REPO
+          -p:RegistryNamespace=$REPOSITORY
           -p:ContainerImageTag=$VER
           /t:PublishContainer
           -p:ContainerArchiveOutputPath=/tmp/image-$PROJECT.tar
 
       - name: Push version tag with Skopeo
         run: >
-          IMAGE="$REGISTRY/$REPO/$IMAGE_NAME";
+          IMAGE="$REGISTRY/$REPOSITORY/$IMAGE_NAME";
           skopeo copy --tls-verify=false
           --dest-username ${{ vars.GITEA_USER }}
           --dest-password ${{ secrets.GITEA_TOKEN }}
