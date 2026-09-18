@@ -22,7 +22,7 @@ Verwacht: beide nieuwe paden staan in de lijst.
 
 ```json
 {
-  "version": "0.2",
+  "version": "0.3",
   "pathFilters": ["."],
   "publicReleaseRefSpec": [
     "^refs/heads/main$"
@@ -30,7 +30,7 @@ Verwacht: beide nieuwe paden staan in de lijst.
 }
 ```
 
-2. Kies een versienummer dat nog geen enkel ander project gebruikt — gelijke nummers delen één height-lijn en versies divergeren dan niet. Controleer bestaande nummers met:
+2. Kies een versienummer dat nog geen enkel ander project gebruikt — gelijke nummers delen één height-lijn en versies divergeren dan niet. Het versienummer `0.3` in het voorbeeld hierboven is slechts illustratief — verifieer met onderstaand commando dat jouw nummer nog ongebruikt is. Controleer bestaande nummers met:
 
 ```bash
 grep -h '"version"' src/*/version.json
@@ -67,7 +67,7 @@ Gebruik kleine letters zonder spaties voor `<image>` en `<chart>` (bijvoorbeeld 
 cp -r .infra/learncicd-worker .infra/<chart>
 ```
 
-2. Hernoem in de kopie alle helpers/labels van `learncicd-worker` naar `<chart>` (bestanden: `Chart.yaml`, `templates/_helpers.tpl`, `templates/deployment.yaml`, `templates/service.yaml`).
+2. Hernoem in de kopie alle helpers/labels van `learncicd-worker` naar `<chart>` (bestanden: `Chart.yaml`, `templates/_helpers.tpl`, `templates/deployment.yaml`, `templates/service.yaml`), inclusief het veld `name:` in `Chart.yaml`.
 3. Vul `.infra/<chart>/values.yaml` in (volledige `repository:`, port, pullPolicy, probes, resources — kopieer van de worker-chart) en `.infra/<chart>/values-devtest.yaml` (alleen `service.port` en `image.tag`).
 4. Maak `argocd/applications/<chart>-devtest.yaml` (kopieer `argocd/applications/learncicd-worker-devtest.yaml`) met `path: .infra/<chart>` en beide `valueFiles` naar de nieuwe chart.
 5. Valideer de chart:
@@ -88,6 +88,8 @@ dotnet restore
 dotnet build -c Release --no-restore /p:TreatWarningsAsErrors=true
 dotnet test -c Release --no-build --coverage --coverage-output-format cobertura
 ```
+
+Bij workflow-wijzigingen: draai `actionlint` en `yamllint` (alleen de 2 bekende warnings zijn oké).
 
 2. Open een PR naar `main` en controleer dat de CI-matrix een leg voor `<Naam>` draait (andere projecten skippen of ontbreken).
 3. Na merge: controleer dat de CD-run een image voor `<Naam>` publiceert en dat de ArgoCD-app synct (`kubectl get applications -n argocd`, pods `Running`).
