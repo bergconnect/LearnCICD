@@ -7,6 +7,16 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
+  <!-- Image-naamgeving: alleen het naamsdeel is statisch; host en
+       namespace komen dynamisch via -p:RegistryHost/-p:RegistryNamespace
+       van de workflow. Condition-defaults voor lokaal publishen. -->
+  <PropertyGroup>
+    <ImageShortName>api</ImageShortName>
+    <RegistryHost Condition="'$(RegistryHost)' == ''">go.berg-connect.nl</RegistryHost>
+    <RegistryNamespace Condition="'$(RegistryNamespace)' == ''">beheerder</RegistryNamespace>
+    <ContainerRepository>$(RegistryHost)/$(RegistryNamespace)/$(ImageShortName)</ContainerRepository>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.12" />
     <PackageReference Include="Scalar.AspNetCore" Version="2.17.3" />
