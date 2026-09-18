@@ -11,7 +11,7 @@
        namespace komen dynamisch via -p:RegistryHost/-p:RegistryNamespace
        van de workflow. Condition-defaults voor lokaal publishen. -->
   <PropertyGroup>
-    <ImageShortName>api</ImageShortName>
+    <ImageShortName>learncicd-api</ImageShortName>
     <RegistryHost Condition="'$(RegistryHost)' == ''">go.berg-connect.nl</RegistryHost>
     <RegistryNamespace Condition="'$(RegistryNamespace)' == ''">beheerder</RegistryNamespace>
     <ContainerRepository>$(RegistryHost)/$(RegistryNamespace)/$(ImageShortName)</ContainerRepository>
