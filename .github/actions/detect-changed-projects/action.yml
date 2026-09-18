@@ -1,0 +1,137 @@
+name: 'Detect changed projects'
+description: >
+  Classificeert een lijst gewijzigde bestanden naar de set .NET-projecten
+  onder src/ die daardoor geraakt zijn. Eén implementatie, gedeeld door
+  ci-template.yml en cd-template.yml, geparametriseerd voor de kleine
+  gedragsverschillen tussen CI en CD. Projecten worden ontdekt via `ls src`
+  — een nieuw project onder src/ wordt dus automatisch meegenomen zonder
+  dat deze action of de aanroepende workflow aangepast hoeft te worden.
+
+inputs:
+  files:
+    description: 'Newline-separated lijst van gewijzigde bestandspaden (output van git diff --name-only)'
+    required: true
+  own-workflow-files:
+    description: >
+      Newline-separated paden die altijd alle projecten selecteren: de
+      workflow-bestanden van de aanroeper zelf (bv. ci.yml + ci-template.yml).
+    required: true
+  match-tests:
+    description: 'Ook tests/<Project>.Tests/** meetellen als wijziging van dat project (CI: true, CD: false)'
+    required: false
+    default: 'true'
+  flag-workflow-changes:
+    description: >
+      Zet de `workflows`-output wanneer een niet-eigen .github/*-bestand wijzigt,
+      in plaats van dit te negeren (CI: true, CD: false).
+    required: false
+    default: 'false'
+  ignore-other-src-and-tests:
+    description: >
+      Genegeerde src/*/** en tests/*-wijzigingen die geen bekend project raken
+      stil negeren in plaats van alle projecten te selecteren (CD: true, CI: false).
+    required: false
+    default: 'false'
+  select-all-on-empty-diff:
+    description: 'Selecteer alle projecten wanneer de files-lijst leeg is (CI en CD: true — zie opmerking in SKILL/README)'
+    required: false
+    default: 'false'
+
+outputs:
+  projects:
+    description: 'JSON-array met namen van geraakte projecten, bv. ["Api","Worker"]'
+    value: ${{ steps.classify.outputs.projects }}
+  workflows:
+    description: 'true als een niet-eigen workflow-bestand wijzigde (alleen relevant met flag-workflow-changes: true)'
+    value: ${{ steps.classify.outputs.workflows }}
+
+runs:
+  using: composite
+  steps:
+    - name: Classify changed paths
+      id: classify
+      shell: bash
+      env:
+        FILES: ${{ inputs.files }}
+        OWN_WORKFLOW_FILES_RAW: ${{ inputs.own-workflow-files }}
+        MATCH_TESTS: ${{ inputs.match-tests }}
+        FLAG_WORKFLOW_CHANGES: ${{ inputs.flag-workflow-changes }}
+        IGNORE_OTHER_SRC_AND_TESTS: ${{ inputs.ignore-other-src-and-tests }}
+        SELECT_ALL_ON_EMPTY_DIFF: ${{ inputs.select-all-on-empty-diff }}
+      run: |
+        set -f
+
+        PROJECTS=$(ls src)
+        OWN_WORKFLOW_FILES=$(printf '%s' "$OWN_WORKFLOW_FILES_RAW" | tr '\n' ' ')
+
+        SELECTED=""
+        WORKFLOWS=false
+
+        if [ -z "$FILES" ] && [ "$SELECT_ALL_ON_EMPTY_DIFF" = "true" ]; then
+          SELECTED="$PROJECTS"
+        else
+          while IFS= read -r f; do
+            [ -z "$f" ] && continue
+            MATCHED=false
+
+            case "$f" in
+              global.json|version.json|*.sln|Directory.*)
+                SELECTED="$PROJECTS"; MATCHED=true;;
+            esac
+
+            if [ "$MATCHED" = false ]; then
+              for own in $OWN_WORKFLOW_FILES; do
+                if [ "$f" = "$own" ]; then
+                  SELECTED="$PROJECTS"; MATCHED=true; break
+                fi
+              done
+            fi
+
+            if [ "$MATCHED" = false ]; then
+              for P in $PROJECTS; do
+                if [ "$MATCH_TESTS" = "true" ]; then
+                  case "$f" in
+                    src/$P/**|tests/$P.Tests/**)
+                      case " $SELECTED " in *" $P "*) :;; *) SELECTED="$SELECTED $P";; esac
+                      MATCHED=true; break;;
+                  esac
+                else
+                  case "$f" in
+                    src/$P/**)
+                      case " $SELECTED " in *" $P "*) :;; *) SELECTED="$SELECTED $P";; esac
+                      MATCHED=true; break;;
+                  esac
+                fi
+              done
+            fi
+
+            if [ "$MATCHED" = false ]; then
+              if [ "$IGNORE_OTHER_SRC_AND_TESTS" = "true" ]; then
+                case "$f" in
+                  src/*/**|tests/*|.github/*|.infra/*|argocd/*)
+                    :;;
+                  docs/*|*.md|.gitignore|LICENSE)
+                    :;;
+                  *)
+                    SELECTED="$PROJECTS";;
+                esac
+              else
+                case "$f" in
+                  .github/*)
+                    if [ "$FLAG_WORKFLOW_CHANGES" = "true" ]; then WORKFLOWS=true; fi;;
+                  .infra/*|argocd/*|docs/*|*.md|.gitignore|LICENSE)
+                    :;;
+                  *)
+                    SELECTED="$PROJECTS";;
+                esac
+              fi
+            fi
+          done <<< "$FILES"
+        fi
+
+        if [ -z "$SELECTED" ]; then JSON="[]";
+        else JSON=$(printf '%s\n' $SELECTED | sort -u | jq -R . | jq -cs .);
+        fi
+
+        echo "projects=$JSON" >> "$GITHUB_OUTPUT"
+        echo "workflows=$WORKFLOWS" >> "$GITHUB_OUTPUT"

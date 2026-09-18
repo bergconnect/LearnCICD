@@ -34,30 +34,41 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Diff changed paths
-        id: diff
-        run: |
-          {
-            echo 'files<<EOF'
-            git diff --name-only origin/main...HEAD
-            echo EOF
-          } >> "$GITHUB_OUTPUT"
-
       - name: Classify changed paths
         id: classify
-        uses: ./.github/actions/detect-changed-projects
-        with:
-          files: ${{ steps.diff.outputs.files }}
-          own-workflow-files: |
-            .github/workflows/ci.yml
-            .github/workflows/ci-template.yml
-          match-tests: 'true'
-          flag-workflow-changes: 'true'
-          ignore-other-src-and-tests: 'false'
-          # NB: bewust 'true' — behoudt het bestaande gedrag waarbij een
-          # (in de praktijk vrijwel nooit voorkomende) lege diff voor de
-          # zekerheid alle projecten test in plaats van geen enkel project.
-          select-all-on-empty-diff: 'true'
+        run: >
+          FILES=$(git diff --name-only origin/main...HEAD);
+          PROJECTS=$(ls src);
+          SELECTED=""; WORKFLOWS=false; set -f;
+          while IFS= read -r f; do
+          MATCHED=false;
+          case "$f" in
+          global.json|version.json|*.sln|Directory.*)
+          SELECTED="$PROJECTS"; MATCHED=true;;
+          .github/workflows/ci.yml|.github/workflows/ci-template.yml)
+          SELECTED="$PROJECTS"; MATCHED=true;;
+          esac;
+          if [ "$MATCHED" = false ]; then
+          for P in $PROJECTS; do
+          case "$f" in src/$P/**|tests/$P.Tests/**)
+          case " $SELECTED " in *" $P "*) :;;
+          *) SELECTED="$SELECTED $P";; esac;
+          MATCHED=true; break;; esac; done; fi;
+          if [ "$MATCHED" = false ]; then
+          case "$f" in
+          .github/*)
+          WORKFLOWS=true;;
+          .infra/*|argocd/*|docs/*|*.md|.gitignore|LICENSE)
+          :;;
+          *)
+          SELECTED="$PROJECTS";;
+          esac; fi;
+          done <<< "$FILES";
+          if [ -z "$SELECTED" ]; then JSON="[]";
+          else JSON=$(printf '%s\n' $SELECTED | sort -u | jq -R . | jq -cs .);
+          fi;
+          echo "projects=$JSON" >> "$GITHUB_OUTPUT";
+          echo "workflows=$WORKFLOWS" >> "$GITHUB_OUTPUT"
 
   test:
     name: Test
