@@ -13,6 +13,16 @@ on:
         required: false
         default: 'beheerder'
         type: string
+      base-image:
+        description: 'Runtime base-image voor dotnet publish'
+        required: false
+        default: 'mcr.microsoft.com/dotnet/aspnet:10.0'
+        type: string
+      dotnet-version:
+        description: '.NET SDK-versie voor setup-dotnet'
+        required: false
+        default: '10.0.x'
+        type: string
     secrets:
       GITEA_TOKEN:
         required: true
@@ -108,6 +118,7 @@ jobs:
       IMAGE_NAME: ${{ matrix.release.image }}
       REGISTRY: ${{ inputs.registry-host || 'go.berg-connect.nl' }}
       REPO: ${{ inputs.repo || 'beheerder' }}
+      BASE_IMAGE: ${{ inputs.base-image }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -117,7 +128,7 @@ jobs:
       - name: Set up .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 10.0.x
+          dotnet-version: ${{ inputs.dotnet-version || '10.0.x' }}
 
       - name: Restore .NET tools
         run: dotnet tool restore
@@ -130,10 +141,11 @@ jobs:
 
       - name: Build image archive with dotnet publish
         run: >
+          BASE_IMAGE="${BASE_IMAGE:-mcr.microsoft.com/dotnet/aspnet:10.0}";
           dotnet publish "src/$PROJECT/$PROJECT.csproj"
           --os linux --arch x64
           -c Release
-          -p:ContainerBaseImage=mcr.microsoft.com/dotnet/aspnet:10.0
+          -p:ContainerBaseImage=$BASE_IMAGE
           -p:RegistryHost=$REGISTRY
           -p:RegistryNamespace=$REPO
           -p:ContainerImageTag=$VER
