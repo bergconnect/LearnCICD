@@ -78,3 +78,18 @@ helm template <chart>-devtest .infra/<chart> -f .infra/<chart>/values.yaml -f .i
 ```
 
 Verwacht: `1 chart(s) linted, 0 failed` en één `image:`-regel met jouw repository en tag.
+
+## 5. Verificatie
+
+1. Lokaal valideren (zelfde als CI):
+
+```bash
+dotnet restore
+dotnet build -c Release --no-restore /p:TreatWarningsAsErrors=true
+dotnet test -c Release --no-build --coverage --coverage-output-format cobertura
+```
+
+2. Open een PR naar `main` en controleer dat de CI-matrix een leg voor `<Naam>` draait (andere projecten skippen of ontbreken).
+3. Na merge: controleer dat de CD-run een image voor `<Naam>` publiceert en dat de ArgoCD-app synct (`kubectl get applications -n argocd`, pods `Running`).
+
+Acceptatie/productie vallen buiten dit stappenplan en volgen de bestaande promote-flow.
