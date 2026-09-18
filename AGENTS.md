@@ -37,12 +37,7 @@ yamllint .github/workflows/ci.yml   # alleen de 2 bekende warnings zijn oké
 
 ## Nieuw project onboarding (alles ontdekt automatisch)
 
-- `src/<Naam>/<Naam>.csproj` + code; `<ImageShortName>` is verplicht (CD leest de image-naam daaruit en faalt luid als het element ontbreekt).
-- `src/<Naam>/version.json` met eigen `version` + `pathFilters: ["."]` (nummers per project moeten verschillen, anders delen ze één height-lijn).
-- `tests/<Naam>.Tests/` (xunit v3 + MTP) en beide projecten toevoegen met `dotnet sln add`.
-- Chart kopiëren naar `.infra/<chart>/` (helpers/labels hernoemen), `values.yaml` + `values-devtest.yaml` invullen, ArgoCD-app onder `argocd/applications/` met `path` + `valueFiles` naar de nieuwe chart.
-- Niets in `.github/` aanpassen: CI/CD ontdekken projecten via `ls src`, matrix en tag-branches volgen automatisch.
-- Valideren: `dotnet build/test` (zie boven), `helm lint` + `helm template`, `actionlint`, `yamllint` (alleen de 2 bekende warnings zijn oké).
+Zie `docs/nieuwe-service.md` voor het volledige stappenplan (code, versiebestand, CI/CD-koppeling, chart, ArgoCD-app, verificatie).
 
 ## Belangrijke conventies
 
