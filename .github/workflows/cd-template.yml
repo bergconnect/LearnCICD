@@ -83,10 +83,10 @@ jobs:
         run: >
           MATRIX_JSON="[]";
           for P in $(echo "$PROJECTS" | jq -r '.[]'); do
-          IMAGE=$(sed -n 's/.*<ImageShortName>\([^<]*\)<.*/\1/p'
-          "src/$P/$P.csproj" | head -1);
+          IMAGE=$(jq -r --arg p "$P"
+          '.[$p].image_name // empty' .github/projects.json);
           if [ -z "$IMAGE" ]; then
-          echo "::error::$P mist <ImageShortName> in de csproj"; exit 1; fi;
+          echo "::error::$P ontbreekt in .github/projects.json"; exit 1; fi;
           ITEM=$(jq -n --arg p "$P" --arg i "$IMAGE"
           '{project:$p,image:$i}');
           MATRIX_JSON=$(echo "$MATRIX_JSON" | jq -c --argjson i "$ITEM"
@@ -141,8 +141,7 @@ jobs:
           --os linux --arch x64
           -c Release
           -p:ContainerBaseImage=$BASE_IMAGE
-          -p:RegistryHost=$REGISTRY
-          -p:RegistryNamespace=$REPOSITORY
+          -p:ContainerRepository=$REGISTRY/$REPOSITORY/$IMAGE_NAME
           -p:ContainerImageTag=$VER
           /t:PublishContainer
           -p:ContainerArchiveOutputPath=/tmp/image-$PROJECT.tar

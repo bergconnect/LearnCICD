@@ -5,14 +5,15 @@ run-name: Promote ${{ inputs.environment }} to ${{ inputs.version }}
 on:
   workflow_dispatch:
     inputs:
-      image:
+      project:
         description: >
-          Image-naam (zonder registry/repo). Moet als key voorkomen in
+          Project-naam. Moet als key voorkomen in
           .github/projects.json — voeg daar een nieuw project aan toe
           in plaats van deze workflow te wijzigen.
         required: true
-        default: 'learncicd-api'
-        type: string
+        default: 'Api'
+        type: choice
+        options: [Api, Worker]
       environment:
         description: 'Doelomgeving'
         required: true
@@ -26,7 +27,7 @@ on:
 permissions: {}
 
 concurrency:
-  group: promote-${{ inputs.image }}-${{ inputs.environment }}
+  group: promote-${{ inputs.project }}-${{ inputs.environment }}
   cancel-in-progress: false
 
 jobs:
@@ -46,17 +47,20 @@ jobs:
       - name: Check version exists as image tag
         id: check
         env:
-          IMAGE_NAME: ${{ inputs.image }}
+          PROJECT: ${{ inputs.project }}
           GITEA_USER: ${{ vars.GITEA_USER }}
           GITEA_TOKEN: ${{ secrets.GITEA_TOKEN }}
         run: >
           MANIFEST=".github/projects.json";
           if [ ! -f "$MANIFEST" ]; then
           echo "::error::Manifest $MANIFEST ontbreekt"; exit 1; fi;
-          CHART=$(jq -r --arg img "$IMAGE_NAME" '.[$img].chart // empty' "$MANIFEST");
-          if [ -z "$CHART" ]; then
-          echo "::error::Onbekend image '$IMAGE_NAME' — voeg een entry toe aan $MANIFEST";
-          exit 1; fi;
+          IMAGE_NAME=$(jq -r --arg p "$PROJECT"
+          '.[$p].image_name // empty' "$MANIFEST");
+          CHART=$(jq -r --arg p "$PROJECT"
+          '.[$p].chart // empty' "$MANIFEST");
+          if [ -z "$IMAGE_NAME" ] || [ -z "$CHART" ]; then
+          echo "::error::Onbekend project '$PROJECT' — voeg een entry toe
+          aan $MANIFEST"; exit 1; fi;
           IMAGE="${{ vars.GITEA_LOCAL }}/beheerder/$IMAGE_NAME";
           VERSION="${{ inputs.version }}";
           case "$VERSION" in ''|*[!0-9.]*)
@@ -110,7 +114,7 @@ jobs:
           ENV: ${{ inputs.environment }}
           VERSION: ${{ needs.validate.outputs.version }}
           CHART: ${{ needs.validate.outputs.chart }}
-          BRANCH: "ci/promote-${{ inputs.image }}-${{ inputs.environment }}-\
+          BRANCH: "ci/promote-${{ inputs.project }}-${{ inputs.environment }}-\
             ${{ needs.validate.outputs.version }}"
         run: >
           FILE=".infra/$CHART/values-$ENV.yaml";
@@ -130,9 +134,9 @@ jobs:
         if: steps.bump.outputs.changed == 'true'
         env:
           ENV: ${{ inputs.environment }}
-          IMAGE_NAME: ${{ inputs.image }}
+          PROJECT: ${{ inputs.project }}
           VERSION: ${{ needs.validate.outputs.version }}
-          BRANCH: "ci/promote-${{ inputs.image }}-${{ inputs.environment }}-\
+          BRANCH: "ci/promote-${{ inputs.project }}-${{ inputs.environment }}-\
             ${{ needs.validate.outputs.version }}"
           TOKEN: ${{ secrets.GH_PAT }}
           API: ${{ github.api_url }}
@@ -142,7 +146,7 @@ jobs:
           -X POST "$API/repos/$REPO/pulls"
           -H "Authorization: token $TOKEN"
           -H "Content-Type: application/json"
-          -d "{\"title\":\"ci: promote $IMAGE_NAME $ENV
+          -d "{\"title\":\"ci: promote $PROJECT $ENV
           to $VERSION\",\"body\":\"Promotie van image $VERSION
           naar $ENV
           (sequentie
