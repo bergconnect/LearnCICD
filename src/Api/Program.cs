@@ -1,5 +1,6 @@
 using Scalar.AspNetCore;
 
+// LearnCICD Api service — routing probe (no behavior change).
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOpenApi();
 var app = builder.Build();
