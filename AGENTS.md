@@ -35,6 +35,15 @@ yamllint .github/workflows/ci.yml   # alleen de 2 bekende warnings zijn oké
 - Vereist op de machine: Docker-daemon (Buildx werkt met nesting=1, geen privileges nodig) en Skopeo (voor de `publish`-job).
 - .NET SDK hoeft NIET vooraf geïnstalleerd te zijn: de workflow zet `DOTNET_INSTALL_DIR` in de workspace en `setup-dotnet` installeert zelf (nodig omdat de runner-user niet naar `/usr/share/dotnet` mag schrijven).
 
+## Nieuw project onboarding (alles ontdekt automatisch)
+
+- `src/<Naam>/<Naam>.csproj` + code; `<ImageShortName>` is verplicht (CD leest de image-naam daaruit en faalt luid als het element ontbreekt).
+- `src/<Naam>/version.json` met eigen `version` + `pathFilters: ["."]` (nummers per project moeten verschillen, anders delen ze één height-lijn).
+- `tests/<Naam>.Tests/` (xunit v3 + MTP) en beide projecten toevoegen met `dotnet sln add`.
+- Chart kopiëren naar `.infra/<chart>/` (helpers/labels hernoemen), `values.yaml` + `values-devtest.yaml` invullen, ArgoCD-app onder `argocd/applications/` met `path` + `valueFiles` naar de nieuwe chart.
+- Niets in `.github/` aanpassen: CI/CD ontdekken projecten via `ls src`, matrix en tag-branches volgen automatisch.
+- Valideren: `dotnet build/test` (zie boven), `helm lint` + `helm template`, `actionlint`, `yamllint` (alleen de 2 bekende warnings zijn oké).
+
 ## Belangrijke conventies
 
 - Images worden alleen gepusht door de `publish`-job (na merge naar `main`, naar het Gitea-registry).
