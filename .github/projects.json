@@ -1,0 +1,8 @@
+{
+  "learncicd-api": {
+    "chart": "learncicd"
+  },
+  "learncicd-worker": {
+    "chart": "learncicd-worker"
+  }
+}

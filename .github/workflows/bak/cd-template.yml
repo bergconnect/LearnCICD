@@ -44,45 +44,50 @@ jobs:
     permissions:
       contents: read
     outputs:
-      matrix: ${{ steps.build-matrix.outputs.matrix }}
+      matrix: ${{ steps.discover.outputs.matrix }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Diff changed paths
-        id: diff
+      - name: Discover changed projects
+        id: discover
         env:
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.event.after }}
-        run: |
-          {
-            echo 'files<<EOF'
-            git diff --name-only "$BEFORE" "$AFTER" 2>/dev/null || git diff --name-only HEAD~1 HEAD
-            echo EOF
-          } >> "$GITHUB_OUTPUT"
-
-      - name: Classify changed paths
-        id: classify
-        uses: ./.github/actions/detect-changed-projects
-        with:
-          files: ${{ steps.diff.outputs.files }}
-          own-workflow-files: |
-            .github/workflows/cd.yml
-            .github/workflows/cd-template.yml
-          match-tests: 'false'
-          flag-workflow-changes: 'false'
-          ignore-other-src-and-tests: 'true'
-          select-all-on-empty-diff: 'true'
-
-      - name: Build publish matrix
-        id: build-matrix
-        env:
-          PROJECTS: ${{ steps.classify.outputs.projects }}
         run: >
+          FILES=$(git diff --name-only "$BEFORE" "$AFTER" 2>/dev/null
+          || git diff --name-only HEAD~1 HEAD);
+          PROJECTS=$(ls src);
+          SELECTED=""; set -f;
+          while IFS= read -r f; do
+          MATCHED=false;
+          case "$f" in
+          global.json|version.json|*.sln|Directory.*)
+          SELECTED="$PROJECTS"; MATCHED=true;;
+          .github/workflows/cd.yml|.github/workflows/cd-template.yml)
+          SELECTED="$PROJECTS"; MATCHED=true;;
+          esac;
+          if [ "$MATCHED" = false ]; then
+          for P in $PROJECTS; do
+          case "$f" in src/$P/**)
+          case " $SELECTED " in *" $P "*) :;;
+          *) SELECTED="$SELECTED $P";; esac;
+          MATCHED=true; break;; esac; done; fi;
+          if [ "$MATCHED" = false ]; then
+          case "$f" in
+          src/*/**|tests/*|.github/*|.infra/*|argocd/*)
+          :;;
+          docs/*|*.md|.gitignore|LICENSE)
+          :;;
+          *)
+          SELECTED="$PROJECTS";;
+          esac; fi;
+          done <<< "$FILES";
+          if [ -z "$FILES" ]; then SELECTED="$PROJECTS"; fi;
           MATRIX_JSON="[]";
-          for P in $(echo "$PROJECTS" | jq -r '.[]'); do
+          for P in $SELECTED; do
           IMAGE=$(sed -n 's/.*<ImageShortName>\([^<]*\)<.*/\1/p'
           "src/$P/$P.csproj" | head -1);
           if [ -z "$IMAGE" ]; then
