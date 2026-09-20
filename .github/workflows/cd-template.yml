@@ -220,8 +220,8 @@ jobs:
           if [ -z "$CHART" ]; then
           echo "::error::Onbekend project '$PROJECT'"; exit 1; fi;
           FILE=".infra/$CHART/values-devtest.yaml";
-          TAG="$VER";
-          CURRENT="$(yq '.image.tag' "$FILE")";
+          export TAG="$VER";
+          CURRENT="$(yq -r '.image.tag // ""' "$FILE")";
           if [ "$CURRENT" = "$TAG" ]; then
           echo "Tag al actueel — geen wijziging";
           echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; fi;
@@ -239,17 +239,24 @@ jobs:
           git config user.name "gitea-actions[bot]";
           git config user.email "gitea-actions[bot]@users.noreply.gitea";
           git switch -C "$BRANCH";
+          if git diff --quiet -- "$FILE"; then
+          echo "geen wijziging — sla over";
+          echo "pushed=false" >> "$GITHUB_OUTPUT"; exit 0; fi;
           git add "$FILE";
           git commit -m "ci: update $IMAGE_NAME devtest tag to $VER";
-          git push --force origin "$BRANCH"
+          git push --force origin "$BRANCH";
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
 
       - name: Open update PR
         id: open_pr
-        if: steps.bump.outputs.changed == 'true'
+        if: >
+          steps.bump.outputs.changed == 'true' &&
+          steps.commit.outputs.pushed == 'true'
         env:
           IMAGE_NAME: ${{ matrix.release.image }}
           BRANCH: "ci/image-tag-update-${{ matrix.release.image }}"
           TOKEN: ${{ secrets.GH_PAT }}
+          GH_TOKEN: ${{ secrets.GH_PAT }}
           API: ${{ github.api_url }}
           REPO: ${{ github.repository }}
         run: >
@@ -271,11 +278,17 @@ jobs:
           | jq -r --arg BRANCH "$BRANCH"
           '.[] | select(.head.ref == $BRANCH) | .number' | head -n1); fi;
           if [ -z "$PR_NUMBER" ]; then
+          PR_NUMBER=$(gh pr list --head "$BRANCH"
+          --json number -q '.[0].number' 2>/dev/null || true); fi;
+          if [ -z "$PR_NUMBER" ]; then
           echo "::error::PR number not found"; exit 1; fi;
           echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
       - name: Enable auto-merge
-        if: steps.bump.outputs.changed == 'true'
+        if: >
+          steps.bump.outputs.changed == 'true' &&
+          steps.commit.outputs.pushed == 'true' &&
+          steps.open_pr.outputs.pr_number != ''
         env:
           TOKEN: ${{ secrets.GH_PAT }}
           API: ${{ github.api_url }}
