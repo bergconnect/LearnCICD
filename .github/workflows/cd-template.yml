@@ -160,7 +160,7 @@ jobs:
   update-tag:
     name: Update image tag
     runs-on: [self-hosted]
-    needs: [publish]
+    needs: [publish, detect]
     if: >
       always() &&
       needs.detect.outputs.matrix != '' &&
