@@ -40,6 +40,7 @@ jobs:
     outputs:
       version: ${{ steps.check.outputs.version }}
       chart: ${{ steps.check.outputs.chart }}
+      image-name: ${{ steps.check.outputs.image-name }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -72,7 +73,8 @@ jobs:
           || { echo "::error::Image-tag $VERSION bestaat niet
           in $IMAGE"; exit 1; };
           echo "version=$VERSION" >> "$GITHUB_OUTPUT";
-          echo "chart=$CHART" >> "$GITHUB_OUTPUT"
+          echo "chart=$CHART" >> "$GITHUB_OUTPUT";
+          echo "image-name=$IMAGE_NAME" >> "$GITHUB_OUTPUT"
 
   promote:
     name: Promote ${{ inputs.environment }} to ${{ inputs.version }}
@@ -89,100 +91,24 @@ jobs:
         with:
           token: ${{ secrets.GH_PAT }}
 
-      - name: Sequence check and bump tag
-        env:
-          ENV: ${{ inputs.environment }}
-          VERSION: ${{ needs.validate.outputs.version }}
-          CHART: ${{ needs.validate.outputs.chart }}
-        run: >
-          FILE=".infra/$CHART/values-$ENV.yaml";
-          CURRENT="$(yq '.image.tag' "$FILE")";
-          if [ "$CURRENT" = "$VERSION" ]; then
-          echo "Omgeving $ENV staat al op $VERSION —
-          niets te doen"; exit 0; fi;
-          if [ "$ENV" = "productie" ]; then
-            ACC="$(yq '.image.tag' .infra/$CHART/values-acceptatie.yaml)";
-            if [ "$ACC" != "$VERSION" ]; then
-          echo "::error::Sequentie-schending: acceptatie
-          staat op $ACC, gevraagd $VERSION voor productie";
-              exit 1; fi; fi;
-          yq -i '.image.tag = strenv(VERSION)' "$FILE"
-
-      - name: Commit and push promotion branch
-        id: bump
-        env:
-          ENV: ${{ inputs.environment }}
-          VERSION: ${{ needs.validate.outputs.version }}
-          CHART: ${{ needs.validate.outputs.chart }}
-          BRANCH: "ci/promote-${{ inputs.project }}-${{ inputs.environment }}-\
+      - name: Promote tag via composite
+        id: promote
+        uses: ./.github/actions/bump-image-tag
+        with:
+          project: ${{ inputs.project }}
+          env-name: ${{ inputs.environment }}
+          version: ${{ needs.validate.outputs.version }}
+          image-name: ${{ needs.validate.outputs.image-name }}
+          branch: "ci/promote-${{ inputs.project }}-\
+            ${{ inputs.environment }}-\
             ${{ needs.validate.outputs.version }}"
-        run: >
-          FILE=".infra/$CHART/values-$ENV.yaml";
-          if git diff --quiet "$FILE"; then
-          echo "Geen wijziging — klaar";
-          echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; fi;
-          git config user.name "gitea-actions[bot]";
-          git config user.email "gitea-actions[bot]@users.noreply.gitea";
-          git switch -C "$BRANCH";
-          git add "$FILE";
-          git commit -m "ci: promote $ENV to $VERSION";
-          git push --force origin "$BRANCH";
-          echo "changed=true" >> "$GITHUB_OUTPUT"
-
-      - name: Open promotion PR
-        id: open_pr
-        if: steps.bump.outputs.changed == 'true'
-        env:
-          ENV: ${{ inputs.environment }}
-          PROJECT: ${{ inputs.project }}
-          VERSION: ${{ needs.validate.outputs.version }}
-          BRANCH: "ci/promote-${{ inputs.project }}-${{ inputs.environment }}-\
+          commit-message: "ci: promote ${{ inputs.environment }} \
+            to ${{ needs.validate.outputs.version }}"
+          pr-title: "ci: promote ${{ inputs.project }} \
+            ${{ inputs.environment }} to \
             ${{ needs.validate.outputs.version }}"
-          TOKEN: ${{ secrets.GH_PAT }}
-          API: ${{ github.api_url }}
-          REPO: ${{ github.repository }}
-        run: >
-          STATUS=$(curl -s -o response.json -w "%{http_code}"
-          -X POST "$API/repos/$REPO/pulls"
-          -H "Authorization: token $TOKEN"
-          -H "Content-Type: application/json"
-          -d "{\"title\":\"ci: promote $PROJECT $ENV
-          to $VERSION\",\"body\":\"Promotie van image $VERSION
-          naar $ENV
-          (sequentie
-          gecontroleerd).\",\"head\":\"$BRANCH\",\"base\":\"main\"}");
-          cat response.json;
-          if [ "$STATUS" != "201" ] && ! grep -q "already exists" response.json;
-          then echo "::error::Failed to open PR (HTTP $STATUS)"; exit 1; fi;
-          PR_NUMBER=$(jq -r '.number // empty' response.json);
-          if [ -z "$PR_NUMBER" ]; then
-          PR_NUMBER=$(curl -s -H "Authorization: token $TOKEN"
-          "$API/repos/$REPO/pulls?state=open"
-          | jq -r --arg BRANCH "$BRANCH"
-          '.[] | select(.head.ref == $BRANCH) | .number' | head -n1); fi;
-          if [ -z "$PR_NUMBER" ]; then
-          echo "::error::PR number not found"; exit 1; fi;
-          echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
-
-      - name: Enable auto-merge
-        env:
-          TOKEN: ${{ secrets.GH_PAT }}
-          API: ${{ github.api_url }}
-          REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ steps.open_pr.outputs.pr_number }}
-        run: >
-          PR_JSON=$(curl -s -H "Authorization: Bearer $TOKEN"
-          "$API/repos/$REPO/pulls/$PR_NUMBER");
-          if [ "$(echo "$PR_JSON" | jq -r '.auto_merge')" != "null" ];
-          then echo "auto-merge al actief"; exit 0; fi;
-          NODE=$(echo "$PR_JSON" | jq -r '.node_id');
-          QUERY='mutation($id:ID!){enablePullRequestAutoMerge
-          (input:{pullRequestId:$id,mergeMethod:MERGE})
-          {pullRequest{number}}}';
-          jq -n --arg q "$QUERY" --arg id "$NODE"
-          '{query:$q,variables:{id:$id}}' > gql.json;
-          RESP=$(curl -s -X POST -H "Authorization: Bearer $TOKEN"
-          -H "Content-Type: application/json" "$API/graphql" -d @gql.json);
-          echo "$RESP"; rm -f gql.json;
-          if echo "$RESP" | jq -e '.errors' > /dev/null;
-          then echo "::error::auto-merge inschakelen mislukt"; exit 1; fi
+          pr-body: Promotie van image
+            ${{ needs.validate.outputs.version }} naar
+            ${{ inputs.environment }} (handmatig, sequentie gecontroleerd).
+          token: ${{ secrets.GH_PAT }}
+          require-sequence: ${{ inputs.environment == 'productie' }}
