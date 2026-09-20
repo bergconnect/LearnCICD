@@ -61,7 +61,7 @@ runs:
         ENV_NAME: ${{ inputs.env-name }}
         VERSION: ${{ inputs.version }}
         REQUIRE_SEQUENCE: ${{ inputs.require-sequence }}
-      run: |
+      run: >
         CHART=$(jq -r --arg p "$PROJECT"
         '.[$p].chart // empty' .github/projects.json);
         if [ -z "$CHART" ]; then
@@ -91,7 +91,7 @@ runs:
         ENV_NAME: ${{ inputs.env-name }}
         BRANCH: ${{ inputs.branch }}
         COMMIT_MESSAGE: ${{ inputs.commit-message }}
-      run: |
+      run: >
         CHART=$(jq -r --arg p "$PROJECT"
         '.[$p].chart // empty' .github/projects.json);
         FILE=".infra/$CHART/values-$ENV_NAME.yaml";
@@ -117,7 +117,7 @@ runs:
         BRANCH: ${{ inputs.branch }}
         PR_TITLE: ${{ inputs.pr-title }}
         PR_BODY: ${{ inputs.pr-body }}
-      run: |
+      run: >
         PAYLOAD=$(jq -n --arg t "$PR_TITLE" --arg b "$PR_BODY"
         --arg h "$BRANCH" '{title:$t,body:$b,head:$h,base:"main"}');
         STATUS=$(curl -s -o response.json -w "%{http_code}"
@@ -148,7 +148,7 @@ runs:
         API: ${{ github.api_url }}
         REPO: ${{ github.repository }}
         PR_NUMBER: ${{ steps.open_pr.outputs.pr_number }}
-      run: |
+      run: >
         if [ -z "$PR_NUMBER" ]; then
         echo "::error::PR number leeg — auto-merge geweigerd";
         exit 1; fi;
