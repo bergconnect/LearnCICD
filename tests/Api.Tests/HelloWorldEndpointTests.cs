@@ -19,6 +19,6 @@ public class HelloWorldEndpointTests : IClassFixture<WebApplicationFactory<Progr
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken);
-        Assert.Contains("Hello, World!", body);
+        Assert.Contains("Hello, CI/CD!", body);
     }
 }
