@@ -80,7 +80,7 @@ jobs:
     name: Promote ${{ inputs.environment }} to ${{ inputs.version }}
     runs-on: [self-hosted]
     needs: [validate]
-    timeout-minutes: 10
+    timeout-minutes: 30
     environment: ${{ inputs.environment }}
     permissions:
       contents: write
