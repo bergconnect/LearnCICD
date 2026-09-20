@@ -240,7 +240,7 @@ jobs:
       needs.detect.outputs.matrix != '[]' &&
       (needs.update-tag.result == 'success' ||
       needs.update-tag.result == 'skipped')
-    timeout-minutes: 10
+    timeout-minutes: 30
     permissions:
       contents: write
       pull-requests: write
@@ -320,7 +320,7 @@ jobs:
       needs.detect.outputs.matrix != '[]' &&
       (needs.promote-acceptatie.result == 'success' ||
       needs.promote-acceptatie.result == 'skipped')
-    timeout-minutes: 10
+    timeout-minutes: 30
     permissions:
       contents: write
       pull-requests: write
