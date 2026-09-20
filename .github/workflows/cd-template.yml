@@ -178,7 +178,6 @@ jobs:
       IMAGE_NAME: ${{ matrix.release.image }}
       REGISTRY: ${{ inputs.registry-host || 'go.berg-connect.nl' }}
       REPOSITORY: ${{ inputs.repository || 'beheerder' }}
-      BASE_IMAGE: ${{ inputs.base-image }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -198,7 +197,9 @@ jobs:
         run: >
           VER=$(cd "src/$PROJECT" && dotnet nbgv get-version -v SemVer2);
           echo "VER=$VER" >> "$GITHUB_ENV";
-          echo "Version $VER for $PROJECT"
+          echo "Version $VER for $PROJECT";
+          [ -n "$VER" ] ||
+          { echo "::error::Lege versie voor $PROJECT"; exit 1; }
 
       - name: Check published image exists
         id: gate
@@ -225,6 +226,7 @@ jobs:
           echo "Tag al actueel — geen wijziging";
           echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; fi;
           yq -i '.image.tag = strenv(TAG)' "$FILE";
+          echo "CHART=$CHART" >> "$GITHUB_ENV";
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - name: Commit and push tag update
@@ -233,8 +235,7 @@ jobs:
         env:
           BRANCH: "ci/image-tag-update-${{ matrix.release.image }}"
         run: >
-          FILE=".infra/$(jq -r --arg p "$PROJECT"
-          '.[$p].chart // empty' .github/projects.json)/values-devtest.yaml";
+          FILE=".infra/$CHART/values-devtest.yaml";
           git config user.name "gitea-actions[bot]";
           git config user.email "gitea-actions[bot]@users.noreply.gitea";
           git switch -C "$BRANCH";
@@ -274,6 +275,7 @@ jobs:
           echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
       - name: Enable auto-merge
+        if: steps.bump.outputs.changed == 'true'
         env:
           TOKEN: ${{ secrets.GH_PAT }}
           API: ${{ github.api_url }}
