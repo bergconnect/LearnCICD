@@ -178,3 +178,38 @@ runs:
         if echo "$RESP" | jq -e '.errors' > /dev/null;
         then echo "::error::auto-merge inschakelen mislukt";
         exit 1; fi
+
+    - name: Update PR branch if behind
+      if: steps.commit.outputs.pushed == 'true'
+      shell: bash
+      env:
+        TOKEN: ${{ inputs.token }}
+        API: ${{ github.api_url }}
+        REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ steps.open_pr.outputs.pr_number }}
+      run: >
+        if [ -z "$PR_NUMBER" ]; then
+        echo "::error::PR number leeg — branch-update geweigerd";
+        exit 1; fi;
+        STATE="unknown"; TRIES=3;
+        while [ "$TRIES" -gt 0 ] && [ "$STATE" = "unknown" ]; do
+        STATE=$(curl -s -H "Authorization: Bearer $TOKEN"
+        "$API/repos/$REPO/pulls/$PR_NUMBER"
+        | jq -r '.mergeable_state // "unknown"' || true);
+        if [ "$STATE" = "unknown" ]; then sleep 10; fi;
+        TRIES=$((TRIES - 1)); done;
+        if [ -z "$STATE" ] || [ "$STATE" = "unknown" ]; then
+        echo "::warning::PR-state onbekend — sla branch-update over";
+        exit 0; fi;
+        if [ "$STATE" != "behind" ]; then
+        echo "PR niet achter (state: $STATE) — geen update nodig";
+        exit 0; fi;
+        echo "PR loopt achter — branch bijwerken";
+        UCOD=$(curl -s -o update.json -w "%{http_code}" -X PUT
+        -H "Authorization: Bearer $TOKEN"
+        -H "Accept: application/vnd.github+json"
+        "$API/repos/$REPO/pulls/$PR_NUMBER/update-branch"
+        || true);
+        cat update.json; rm -f update.json;
+        if [ "$UCOD" != "202" ] && [ "$UCOD" != "200" ]; then
+        echo "::error::Branch-update mislukt (HTTP $UCOD)"; exit 1; fi
