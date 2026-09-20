@@ -309,3 +309,83 @@ jobs:
             image ${{ github.sha }} to acceptatie.
           token: ${{ secrets.GH_PAT }}
           require-sequence: 'false'
+
+  promote-productie:
+    name: Promote productie
+    runs-on: [self-hosted]
+    needs: [promote-acceptatie, detect]
+    if: >
+      always() &&
+      needs.detect.outputs.matrix != '' &&
+      needs.detect.outputs.matrix != '[]' &&
+      (needs.promote-acceptatie.result == 'success' ||
+      needs.promote-acceptatie.result == 'skipped')
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    environment: productie
+    concurrency:
+      group: cd-promote-${{ matrix.release.project }}-productie
+      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ${{ fromJSON(needs.detect.outputs.matrix) }}
+    env:
+      PROJECT: ${{ matrix.release.project }}
+      IMAGE_NAME: ${{ matrix.release.image }}
+      REGISTRY: ${{ inputs.registry-host || 'go.berg-connect.nl' }}
+      REPOSITORY: ${{ inputs.repository || 'beheerder' }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+          fetch-depth: 0
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ inputs.dotnet-version || '10.0.x' }}
+
+      - name: Restore .NET tools
+        run: dotnet tool restore
+
+      - name: Determine version
+        run: >
+          VER=$(cd "src/$PROJECT" && dotnet nbgv get-version -v SemVer2);
+          echo "VER=$VER" >> "$GITHUB_ENV";
+          echo "Version $VER for $PROJECT";
+          [ -n "$VER" ] ||
+          { echo "::error::Lege versie voor $PROJECT"; exit 1; }
+
+      - name: Check published image exists
+        id: gate
+        run: >
+          IMAGE="$REGISTRY/$REPOSITORY/$IMAGE_NAME";
+          skopeo inspect --tls-verify=false --raw
+          --creds "${{ vars.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}"
+          docker://$IMAGE:$VER > /dev/null 2>&1
+          && echo "proceed=true" >> "$GITHUB_OUTPUT"
+          || echo "proceed=false" >> "$GITHUB_OUTPUT"
+
+      - name: Promote productie tag via composite
+        id: promote
+        if: steps.gate.outputs.proceed == 'true'
+        uses: ./.github/actions/bump-image-tag
+        with:
+          project: ${{ matrix.release.project }}
+          env-name: productie
+          version: ${{ env.VER }}
+          image-name: ${{ matrix.release.image }}
+          branch: "ci/promote-${{ matrix.release.project }}-\
+            productie-${{ env.VER }}"
+          commit-message: "ci: promote ${{ matrix.release.image }} \
+            productie to ${{ env.VER }}"
+          pr-title: "ci: promote ${{ matrix.release.image }} \
+            productie to ${{ env.VER }}"
+          pr-body: Automated promotion of freshly published
+            image ${{ github.sha }} to productie.
+          token: ${{ secrets.GH_PAT }}
+          require-sequence: 'true'
