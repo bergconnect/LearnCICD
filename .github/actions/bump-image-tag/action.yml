@@ -69,11 +69,20 @@ runs:
         toe aan .github/projects.json"; exit 1; fi;
         export TAG="$VERSION";
         if [ "$REQUIRE_SEQUENCE" = "true" ]; then
-        ACC="$(yq -r '.image.tag // ""'
-        ".infra/$CHART/values-acceptatie.yaml")";
+        ACC=""; ATTEMPTS=20;
+        while [ "$ATTEMPTS" -gt 0 ]; do
+        git fetch origin main --quiet 2>/dev/null || true;
+        ACC="$(git show origin/main:.infra/$CHART/values-acceptatie.yaml
+        2>/dev/null | yq -r '.image.tag // ""' || true)";
+        if [ "$ACC" = "$TAG" ]; then break; fi;
+        ATTEMPTS=$((ATTEMPTS - 1));
+        if [ "$ATTEMPTS" -gt 0 ]; then
+        echo "Wacht op acceptatie $TAG (nu: $ACC, nog $ATTEMPTS min)";
+        sleep 60; fi; done;
         if [ "$ACC" != "$TAG" ]; then
         echo "::error::Sequentie-schending: acceptatie staat op
-        $ACC, gevraagd $TAG voor productie"; exit 1; fi; fi;
+        $ACC, gevraagd $TAG voor productie (20 min gewacht)";
+        exit 1; fi; fi;
         FILE=".infra/$CHART/values-$ENV_NAME.yaml";
         CURRENT="$(yq -r '.image.tag // ""' "$FILE")";
         if [ "$CURRENT" = "$TAG" ]; then
