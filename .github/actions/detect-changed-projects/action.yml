@@ -20,12 +20,6 @@ inputs:
     description: 'Ook tests/<Project>.Tests/** meetellen als wijziging van dat project (CI: true, CD: false)'
     required: false
     default: 'true'
-  flag-workflow-changes:
-    description: >
-      Zet de `workflows`-output wanneer een niet-eigen .github/*-bestand wijzigt,
-      in plaats van dit te negeren (CI: true, CD: false).
-    required: false
-    default: 'false'
   ignore-other-src-and-tests:
     description: >
       Genegeerde src/*/** en tests/*-wijzigingen die geen bekend project raken
@@ -41,9 +35,6 @@ outputs:
   projects:
     description: 'JSON-array met namen van geraakte projecten, bv. ["Api","Worker"]'
     value: ${{ steps.classify.outputs.projects }}
-  workflows:
-    description: 'true als een niet-eigen workflow-bestand wijzigde (alleen relevant met flag-workflow-changes: true)'
-    value: ${{ steps.classify.outputs.workflows }}
 
 runs:
   using: composite
@@ -55,7 +46,6 @@ runs:
         FILES: ${{ inputs.files }}
         OWN_WORKFLOW_FILES_RAW: ${{ inputs.own-workflow-files }}
         MATCH_TESTS: ${{ inputs.match-tests }}
-        FLAG_WORKFLOW_CHANGES: ${{ inputs.flag-workflow-changes }}
         IGNORE_OTHER_SRC_AND_TESTS: ${{ inputs.ignore-other-src-and-tests }}
         SELECT_ALL_ON_EMPTY_DIFF: ${{ inputs.select-all-on-empty-diff }}
       run: |
@@ -65,7 +55,6 @@ runs:
         OWN_WORKFLOW_FILES=$(printf '%s' "$OWN_WORKFLOW_FILES_RAW" | tr '\n' ' ')
 
         SELECTED=""
-        WORKFLOWS=false
 
         if [ -z "$FILES" ] && [ "$SELECT_ALL_ON_EMPTY_DIFF" = "true" ]; then
           SELECTED="$PROJECTS"
@@ -118,7 +107,7 @@ runs:
               else
                 case "$f" in
                   .github/*)
-                    if [ "$FLAG_WORKFLOW_CHANGES" = "true" ]; then WORKFLOWS=true; fi;;
+                    :;;
                   .infra/*|argocd/*|docs/*|*.md|.gitignore|LICENSE)
                     :;;
                   *)
@@ -134,4 +123,3 @@ runs:
         fi
 
         echo "projects=$JSON" >> "$GITHUB_OUTPUT"
-        echo "workflows=$WORKFLOWS" >> "$GITHUB_OUTPUT"
