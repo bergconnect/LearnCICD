@@ -1,0 +1,215 @@
+name: 'Bump image tag'
+description: >
+  Bumpt image.tag in .infra/<chart>/values-<env>.yaml naar een versie,
+  commit + push op een branch, opent een PR (met bestaande-PR-fallback) en
+  schakelt auto-merge in. Eén implementatie voor devtest-, acceptatie- en
+  productie-legs en de handmatige promoot-flow.
+
+inputs:
+  project:
+    description: 'Project-key uit .github/projects.json (bv. Api)'
+    required: true
+  env-name:
+    description: 'Omgeving: devtest, acceptatie of productie'
+    required: true
+  version:
+    description: 'Image-versie (SemVer2, bv. 0.1.77)'
+    required: true
+  image-name:
+    description: 'Image-naam voor commit-message en PR-titel'
+    required: true
+  branch:
+    description: 'Volledige branch-naam voor de bump'
+    required: true
+  commit-message:
+    description: 'Commit-message voor de bump'
+    required: true
+  pr-title:
+    description: 'PR-titel'
+    required: true
+  pr-body:
+    description: 'PR-body'
+    required: false
+    default: ''
+  token:
+    description: 'GH_PAT als input (composites erven geen secrets)'
+    required: true
+  require-sequence:
+    description: "'true' eist acceptatie al op version (productie)"
+    required: false
+    default: 'false'
+
+outputs:
+  changed:
+    description: "'true' als de tag verschilde van version"
+    value: ${{ steps.bump.outputs.changed }}
+  pushed:
+    description: "'true' als er gepusht is"
+    value: ${{ steps.commit.outputs.pushed }}
+  pr_number:
+    description: 'PR-nummer (leeg als er niets te doen was)'
+    value: ${{ steps.open_pr.outputs.pr_number }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve chart and bump tag
+      id: bump
+      shell: bash
+      env:
+        PROJECT: ${{ inputs.project }}
+        ENV_NAME: ${{ inputs.env-name }}
+        VERSION: ${{ inputs.version }}
+        REQUIRE_SEQUENCE: ${{ inputs.require-sequence }}
+      run: >
+        CHART=$(jq -r --arg p "$PROJECT"
+        '.[$p].chart // empty' .github/projects.json);
+        if [ -z "$CHART" ]; then
+        echo "::error::Onbekend project '$PROJECT' — voeg een entry
+        toe aan .github/projects.json"; exit 1; fi;
+        export TAG="$VERSION";
+        if [ "$REQUIRE_SEQUENCE" = "true" ]; then
+        ACC=""; ATTEMPTS=20;
+        while [ "$ATTEMPTS" -gt 0 ]; do
+        git fetch origin main --quiet 2>/dev/null || true;
+        ACC="$(git show origin/main:.infra/$CHART/values-acceptatie.yaml
+        2>/dev/null | yq -r '.image.tag // ""' || true)";
+        if [ "$ACC" = "$TAG" ]; then break; fi;
+        ATTEMPTS=$((ATTEMPTS - 1));
+        if [ "$ATTEMPTS" -gt 0 ]; then
+        echo "Wacht op acceptatie $TAG (nu: $ACC, nog $ATTEMPTS min)";
+        sleep 60; fi; done;
+        if [ "$ACC" != "$TAG" ]; then
+        echo "::error::Sequentie-schending: acceptatie staat op
+        $ACC, gevraagd $TAG voor productie (20 min gewacht)";
+        exit 1; fi; fi;
+        FILE=".infra/$CHART/values-$ENV_NAME.yaml";
+        CURRENT="$(yq -r '.image.tag // ""' "$FILE")";
+        if [ "$CURRENT" = "$TAG" ]; then
+        echo "Tag al actueel — geen wijziging";
+        echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; fi;
+        yq -i '.image.tag = strenv(TAG)' "$FILE";
+        echo "changed=true" >> "$GITHUB_OUTPUT"
+
+    - name: Commit and push
+      id: commit
+      if: steps.bump.outputs.changed == 'true'
+      shell: bash
+      env:
+        PROJECT: ${{ inputs.project }}
+        ENV_NAME: ${{ inputs.env-name }}
+        BRANCH: ${{ inputs.branch }}
+        COMMIT_MESSAGE: ${{ inputs.commit-message }}
+      run: >
+        CHART=$(jq -r --arg p "$PROJECT"
+        '.[$p].chart // empty' .github/projects.json);
+        FILE=".infra/$CHART/values-$ENV_NAME.yaml";
+        git config user.name "gitea-actions[bot]";
+        git config user.email "gitea-actions[bot]@users.noreply.gitea";
+        git switch -C "$BRANCH";
+        if git diff --quiet -- "$FILE"; then
+        echo "Geen wijziging — sla over";
+        echo "pushed=false" >> "$GITHUB_OUTPUT"; exit 0; fi;
+        git add "$FILE";
+        git commit -m "$COMMIT_MESSAGE";
+        git push --force origin "$BRANCH";
+        echo "pushed=true" >> "$GITHUB_OUTPUT"
+
+    - name: Open PR
+      id: open_pr
+      if: steps.commit.outputs.pushed == 'true'
+      shell: bash
+      env:
+        TOKEN: ${{ inputs.token }}
+        API: ${{ github.api_url }}
+        REPO: ${{ github.repository }}
+        BRANCH: ${{ inputs.branch }}
+        PR_TITLE: ${{ inputs.pr-title }}
+        PR_BODY: ${{ inputs.pr-body }}
+      run: >
+        PAYLOAD=$(jq -n --arg t "$PR_TITLE" --arg b "$PR_BODY"
+        --arg h "$BRANCH" '{title:$t,body:$b,head:$h,base:"main"}');
+        STATUS=$(curl -s -o response.json -w "%{http_code}"
+        -X POST "$API/repos/$REPO/pulls"
+        -H "Authorization: token $TOKEN"
+        -H "Content-Type: application/json" -d "$PAYLOAD");
+        cat response.json;
+        if [ "$STATUS" != "201" ] && ! grep -q "already exists"
+        response.json;
+        then echo "::error::Failed to open PR (HTTP $STATUS)";
+        exit 1; fi;
+        PR_NUMBER=$(jq -r '.number // empty' response.json);
+        if [ -z "$PR_NUMBER" ]; then
+        PR_NUMBER=$(curl -s -H "Authorization: token $TOKEN"
+        "$API/repos/$REPO/pulls?state=open"
+        | jq -r --arg BRANCH "$BRANCH"
+        '.[] | select(.head.ref == $BRANCH) | .number' | head -n1);
+        fi;
+        if [ -z "$PR_NUMBER" ]; then
+        echo "::error::PR number not found"; exit 1; fi;
+        echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
+
+    - name: Enable auto-merge
+      if: steps.commit.outputs.pushed == 'true'
+      shell: bash
+      env:
+        TOKEN: ${{ inputs.token }}
+        API: ${{ github.api_url }}
+        REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ steps.open_pr.outputs.pr_number }}
+      run: >
+        if [ -z "$PR_NUMBER" ]; then
+        echo "::error::PR number leeg — auto-merge geweigerd";
+        exit 1; fi;
+        PR_JSON=$(curl -s -H "Authorization: Bearer $TOKEN"
+        "$API/repos/$REPO/pulls/$PR_NUMBER");
+        if [ "$(echo "$PR_JSON" | jq -r '.auto_merge')" != "null" ];
+        then echo "auto-merge al actief"; exit 0; fi;
+        NODE=$(echo "$PR_JSON" | jq -r '.node_id');
+        QUERY='mutation($id:ID!){enablePullRequestAutoMerge
+        (input:{pullRequestId:$id,mergeMethod:MERGE})
+        {pullRequest{number}}}';
+        jq -n --arg q "$QUERY" --arg id "$NODE"
+        '{query:$q,variables:{id:$id}}' > gql.json;
+        RESP=$(curl -s -X POST -H "Authorization: Bearer $TOKEN"
+        -H "Content-Type: application/json" "$API/graphql"
+        -d @gql.json);
+        echo "$RESP"; rm -f gql.json response.json;
+        if echo "$RESP" | jq -e '.errors' > /dev/null;
+        then echo "::error::auto-merge inschakelen mislukt";
+        exit 1; fi
+
+    - name: Update PR branch if behind
+      if: steps.commit.outputs.pushed == 'true'
+      shell: bash
+      env:
+        TOKEN: ${{ inputs.token }}
+        API: ${{ github.api_url }}
+        REPO: ${{ github.repository }}
+        PR_NUMBER: ${{ steps.open_pr.outputs.pr_number }}
+      run: >
+        if [ -z "$PR_NUMBER" ]; then
+        echo "::error::PR number leeg — branch-update geweigerd";
+        exit 1; fi;
+        STATE="unknown"; TRIES=3;
+        while [ "$TRIES" -gt 0 ] && [ "$STATE" = "unknown" ]; do
+        STATE=$(curl -s -H "Authorization: Bearer $TOKEN"
+        "$API/repos/$REPO/pulls/$PR_NUMBER"
+        | jq -r '.mergeable_state // "unknown"' || true);
+        if [ "$STATE" = "unknown" ]; then sleep 10; fi;
+        TRIES=$((TRIES - 1)); done;
+        if [ -z "$STATE" ] || [ "$STATE" = "unknown" ]; then
+        echo "::warning::PR-state onbekend — sla branch-update over";
+        exit 0; fi;
+        if [ "$STATE" != "behind" ]; then
+        echo "PR niet achter (state: $STATE) — geen update nodig";
+        exit 0; fi;
+        echo "PR loopt achter — branch bijwerken";
+        UCOD=$(curl -s -o update.json -w "%{http_code}" -X PUT
+        -H "Authorization: Bearer $TOKEN"
+        -H "Accept: application/vnd.github+json"
+        "$API/repos/$REPO/pulls/$PR_NUMBER/update-branch"
+        || true);
+        cat update.json; rm -f update.json;
+        if [ "$UCOD" != "202" ] && [ "$UCOD" != "200" ]; then
+        echo "::error::Branch-update mislukt (HTTP $UCOD)"; exit 1; fi

@@ -1,0 +1,140 @@
+name: CI template
+
+on:
+  workflow_call:
+    inputs:
+      dotnet-version:
+        description: '.NET SDK-versie voor setup-dotnet'
+        required: false
+        default: '10.0.x'
+        type: string
+
+env:
+  DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Change detection
+    runs-on: [self-hosted]
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      projects: ${{ steps.classify.outputs.projects }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Diff changed paths
+        id: diff
+        run: |
+          {
+            echo 'files<<EOF'
+            git diff --name-only origin/main...HEAD
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Classify changed paths
+        id: classify
+        uses: ./.github/actions/detect-changed-projects
+        with:
+          files: ${{ steps.diff.outputs.files }}
+          match-tests: 'true'
+
+      - name: Validate unique project versions
+        run: >
+          DUP=$(grep -h '"version"' src/*/version.json
+          | sort | uniq -d);
+          if [ -n "$DUP" ]; then
+          echo "::error::Gedeelde major.minor-versies: $DUP";
+          echo "Elk project vereist een uniek major.minor-nummer";
+          exit 1; fi;
+          echo "Projectversies uniek"
+
+  verify-project:
+    name: Verify
+    runs-on: [self-hosted]
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    needs: [changes]
+    if: >
+      needs.changes.outputs.projects != '' &&
+      needs.changes.outputs.projects != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        project: ${{ fromJSON(needs.changes.outputs.projects) }}
+    env:
+      PROJECT: ${{ matrix.project }}
+    steps:
+      - name: Set up .NET
+        uses: ./.github/actions/dotnet-setup
+        with:
+          dotnet-version: ${{ inputs.dotnet-version || '10.0.x' }}
+          token: ${{ github.token }}
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build (Release)
+        run: >
+          dotnet build "src/$PROJECT/$PROJECT.csproj" -c Release
+          --no-restore /p:TreatWarningsAsErrors=true
+
+      - name: Test with coverage
+        run: >
+          dotnet test "tests/$PROJECT.Tests/$PROJECT.Tests.csproj"
+          -c Release --coverage --coverage-output-format cobertura
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report-${{ matrix.project }}
+          path: "**/*.cobertura.xml"
+          retention-days: 14
+
+      - name: Check for vulnerable packages
+        run: >
+          dotnet list "src/$PROJECT/$PROJECT.csproj" package
+          --vulnerable --include-transitive | tee audit.log;
+          dotnet list "tests/$PROJECT.Tests/$PROJECT.Tests.csproj"
+          package --vulnerable --include-transitive | tee -a audit.log;
+          if grep -q "has the following vulnerable packages" audit.log;
+          then echo "::error::Vulnerable NuGet packages found";
+          exit 1; fi;
+          rm -f audit.log
+
+      - name: Report deprecated packages
+        run: >
+          dotnet list "src/$PROJECT/$PROJECT.csproj" package
+          --deprecated;
+          dotnet list "tests/$PROJECT.Tests/$PROJECT.Tests.csproj"
+          package --deprecated
+
+  verify:
+    name: Verify
+    runs-on: [self-hosted]
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    needs: [changes, verify-project]
+    if: always()
+    steps:
+      - name: Verify test and security results
+        run: >
+          for r in
+          "${{ needs.changes.result }}"
+          "${{ needs.verify-project.result }}";
+          do case "$r" in success|skipped) :;;
+          *) echo "::error::Unsatisfied result: $r"; exit 1;; esac;
+          done

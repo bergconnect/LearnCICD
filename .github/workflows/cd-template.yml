@@ -1,0 +1,415 @@
+name: CD template
+
+on:
+  workflow_call:
+    inputs:
+      registry-host:
+        description: 'Registry-host voor image-referenties'
+        required: false
+        default: 'go.berg-connect.nl'
+        type: string
+      repository:
+        description: 'Repository-namespace voor images'
+        required: false
+        default: 'beheerder'
+        type: string
+      base-image:
+        description: 'Runtime base-image voor dotnet publish'
+        required: false
+        default: 'mcr.microsoft.com/dotnet/aspnet:10.0'
+        type: string
+      dotnet-version:
+        description: '.NET SDK-versie voor setup-dotnet'
+        required: false
+        default: '10.0.x'
+        type: string
+      dispatch-project:
+        description: 'Project-key bij dispatch (leeg = push-pad)'
+        required: false
+        default: ''
+        type: string
+      dispatch-environment:
+        description: 'Doelomgeving bij dispatch (leeg = push-pad)'
+        required: false
+        default: ''
+        type: string
+      dispatch-version:
+        description: 'Image-versie bij dispatch (leeg = nbgv)'
+        required: false
+        default: ''
+        type: string
+    secrets:
+      GITEA_TOKEN:
+        required: true
+      GH_PAT:
+        required: true
+
+env:
+  DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
+
+permissions: {}
+
+concurrency:
+  group: cd-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    name: Detect changed projects
+    runs-on: [self-hosted]
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.build-matrix.outputs.matrix }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Diff changed paths
+        id: diff
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+        run: |
+          {
+            echo 'files<<EOF'
+            LIJST=$(git diff --name-only "$BEFORE" "$AFTER" 2>/dev/null ||
+            true);
+            if [ -n "$LIJST" ]; then echo "$LIJST";
+            else git diff --name-only HEAD~1 HEAD; fi
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Classify changed paths
+        id: classify
+        uses: ./.github/actions/detect-changed-projects
+        with:
+          files: ${{ steps.diff.outputs.files }}
+          match-tests: 'false'
+
+      - name: Build publish matrix
+        id: build-matrix
+        env:
+          PROJECTS: ${{ steps.classify.outputs.projects }}
+          DISPATCH_PROJECT: ${{ inputs.dispatch-project }}
+        run: >
+          MATRIX_JSON="[]";
+          if [ -n "$DISPATCH_PROJECT" ]; then
+          IMAGE=$(jq -r --arg p "$DISPATCH_PROJECT"
+          '.[$p].image_name // empty' .github/projects.json);
+          if [ -z "$IMAGE" ]; then
+          echo "::error::$DISPATCH_PROJECT ontbreekt
+          in .github/projects.json"; exit 1; fi;
+          MATRIX_JSON=$(jq -n -c --arg p "$DISPATCH_PROJECT"
+          --arg i "$IMAGE" '[{project:$p,image:$i}]');
+          echo "matrix=$MATRIX_JSON" >> "$GITHUB_OUTPUT";
+          exit 0; fi;
+          for P in $(echo "$PROJECTS" | jq -r '.[]'); do
+          IMAGE=$(jq -r --arg p "$P"
+          '.[$p].image_name // empty' .github/projects.json);
+          if [ -z "$IMAGE" ]; then
+          echo "::error::$P ontbreekt in .github/projects.json"; exit 1; fi;
+          ITEM=$(jq -n --arg p "$P" --arg i "$IMAGE"
+          '{project:$p,image:$i}');
+          MATRIX_JSON=$(echo "$MATRIX_JSON" | jq -c --argjson i "$ITEM"
+          '. + [$i]');
+          done;
+          echo "matrix=$MATRIX_JSON" >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Publish image
+    runs-on: [self-hosted]
+    needs: [detect]
+    if: >
+      needs.detect.outputs.matrix != '' &&
+      needs.detect.outputs.matrix != '[]' &&
+      inputs.dispatch-environment == ''
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ${{ fromJSON(needs.detect.outputs.matrix) }}
+    env:
+      PROJECT: ${{ matrix.release.project }}
+      IMAGE_NAME: ${{ matrix.release.image }}
+      REGISTRY: ${{ inputs.registry-host || 'go.berg-connect.nl' }}
+      REPOSITORY: ${{ inputs.repository || 'beheerder' }}
+      BASE_IMAGE: ${{ inputs.base-image }}
+    steps:
+      - name: Set up .NET
+        uses: ./.github/actions/dotnet-setup
+        with:
+          dotnet-version: ${{ inputs.dotnet-version || '10.0.x' }}
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+          restore-tools: 'true'
+
+      - name: Determine version
+        env:
+          DISPATCH_VERSION: ${{ inputs.dispatch-version }}
+        run: >
+          if [ -n "$DISPATCH_VERSION" ]; then
+          VER="$DISPATCH_VERSION"; else VER=$(cd "src/$PROJECT" && dotnet nbgv
+          get-version -v SemVer2); fi;
+          echo "VER=$VER" >> "$GITHUB_ENV";
+          echo "Version $VER for $PROJECT"
+
+      - name: Build image archive with dotnet publish
+        run: >
+          BASE_IMAGE="${BASE_IMAGE:-mcr.microsoft.com/dotnet/aspnet:10.0}";
+          dotnet publish "src/$PROJECT/$PROJECT.csproj"
+          --os linux --arch x64
+          -c Release
+          -p:ContainerBaseImage=$BASE_IMAGE
+          -p:ContainerRepository=$REGISTRY/$REPOSITORY/$IMAGE_NAME
+          -p:ContainerImageTag=$VER
+          /t:PublishContainer
+          -p:ContainerArchiveOutputPath=/tmp/image-$PROJECT.tar
+
+      - name: Push version tag with Skopeo
+        run: >
+          IMAGE="$REGISTRY/$REPOSITORY/$IMAGE_NAME";
+          skopeo copy --tls-verify=false
+          --dest-username ${{ vars.GITEA_USER }}
+          --dest-password ${{ secrets.GITEA_TOKEN }}
+          docker-archive:/tmp/image-$PROJECT.tar:$IMAGE:$VER
+          docker://$IMAGE:$VER
+
+  update-tag:
+    name: Update image tag
+    runs-on: [self-hosted]
+    needs: [publish, detect]
+    if: >
+      always() &&
+      needs.detect.outputs.matrix != '' &&
+      needs.detect.outputs.matrix != '[]' &&
+      (inputs.dispatch-environment == '' ||
+      inputs.dispatch-environment == 'devtest')
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ${{ fromJSON(needs.detect.outputs.matrix) }}
+    env:
+      PROJECT: ${{ matrix.release.project }}
+      IMAGE_NAME: ${{ matrix.release.image }}
+      REGISTRY: ${{ inputs.registry-host || 'go.berg-connect.nl' }}
+      REPOSITORY: ${{ inputs.repository || 'beheerder' }}
+    steps:
+      - name: Set up .NET
+        uses: ./.github/actions/dotnet-setup
+        with:
+          dotnet-version: ${{ inputs.dotnet-version || '10.0.x' }}
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+          restore-tools: 'true'
+
+      - name: Determine version
+        env:
+          DISPATCH_VERSION: ${{ inputs.dispatch-version }}
+        run: >
+          if [ -n "$DISPATCH_VERSION" ]; then
+          VER="$DISPATCH_VERSION"; else VER=$(cd "src/$PROJECT" && dotnet nbgv
+          get-version -v SemVer2); fi;
+          echo "VER=$VER" >> "$GITHUB_ENV";
+          echo "Version $VER for $PROJECT";
+          [ -n "$VER" ] ||
+          { echo "::error::Lege versie voor $PROJECT"; exit 1; }
+
+      - name: Check published image exists
+        id: gate
+        run: >
+          IMAGE="$REGISTRY/$REPOSITORY/$IMAGE_NAME";
+          skopeo inspect --tls-verify=false --raw
+          --creds "${{ vars.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}"
+          docker://$IMAGE:$VER > /dev/null 2>&1
+          && echo "proceed=true" >> "$GITHUB_OUTPUT"
+          || echo "proceed=false" >> "$GITHUB_OUTPUT"
+
+      - name: Bump devtest tag via composite
+        id: promote
+        if: steps.gate.outputs.proceed == 'true'
+        uses: ./.github/actions/bump-image-tag
+        with:
+          project: ${{ matrix.release.project }}
+          env-name: devtest
+          version: ${{ env.VER }}
+          image-name: ${{ matrix.release.image }}
+          branch: ci/image-tag-update-${{ matrix.release.image }}
+          commit-message: "ci: update ${{ matrix.release.image }} \
+            devtest tag to ${{ env.VER }}"
+          pr-title: "ci: update image tag \
+            ${{ matrix.release.image }}:${{ env.VER }} to devtest"
+          pr-body: Automated tag update for freshly published image
+            ${{ github.sha }}.
+          token: ${{ secrets.GH_PAT }}
+          require-sequence: 'false'
+
+  promote-acceptatie:
+    name: Promote acceptatie
+    runs-on: [self-hosted]
+    needs: [update-tag, detect]
+    if: >
+      always() &&
+      needs.detect.outputs.matrix != '' &&
+      needs.detect.outputs.matrix != '[]' &&
+      (      needs.update-tag.result == 'success' ||
+      needs.update-tag.result == 'skipped') &&
+      (inputs.dispatch-environment == '' ||
+      inputs.dispatch-environment == 'acceptatie' ||
+      inputs.dispatch-environment == 'productie')
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+    environment: acceptatie
+    concurrency:
+      group: cd-promote-${{ matrix.release.project }}-acceptatie
+      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ${{ fromJSON(needs.detect.outputs.matrix) }}
+    env:
+      PROJECT: ${{ matrix.release.project }}
+      IMAGE_NAME: ${{ matrix.release.image }}
+      REGISTRY: ${{ inputs.registry-host || 'go.berg-connect.nl' }}
+      REPOSITORY: ${{ inputs.repository || 'beheerder' }}
+    steps:
+      - name: Set up .NET
+        uses: ./.github/actions/dotnet-setup
+        with:
+          dotnet-version: ${{ inputs.dotnet-version || '10.0.x' }}
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+          restore-tools: 'true'
+
+      - name: Determine version
+        env:
+          DISPATCH_VERSION: ${{ inputs.dispatch-version }}
+        run: >
+          if [ -n "$DISPATCH_VERSION" ]; then
+          VER="$DISPATCH_VERSION"; else VER=$(cd "src/$PROJECT" && dotnet nbgv
+          get-version -v SemVer2); fi;
+          echo "VER=$VER" >> "$GITHUB_ENV";
+          echo "Version $VER for $PROJECT";
+          [ -n "$VER" ] ||
+          { echo "::error::Lege versie voor $PROJECT"; exit 1; }
+
+      - name: Check published image exists
+        id: gate
+        run: >
+          IMAGE="$REGISTRY/$REPOSITORY/$IMAGE_NAME";
+          skopeo inspect --tls-verify=false --raw
+          --creds "${{ vars.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}"
+          docker://$IMAGE:$VER > /dev/null 2>&1
+          && echo "proceed=true" >> "$GITHUB_OUTPUT"
+          || echo "proceed=false" >> "$GITHUB_OUTPUT"
+
+      - name: Promote acceptatie tag via composite
+        id: promote
+        if: steps.gate.outputs.proceed == 'true'
+        uses: ./.github/actions/bump-image-tag
+        with:
+          project: ${{ matrix.release.project }}
+          env-name: acceptatie
+          version: ${{ env.VER }}
+          image-name: ${{ matrix.release.image }}
+          branch: "ci/promote-${{ matrix.release.project }}-\
+            acceptatie-${{ env.VER }}"
+          commit-message: "ci: promote ${{ matrix.release.image }} \
+            acceptatie to ${{ env.VER }}"
+          pr-title: "ci: promote ${{ matrix.release.image }} \
+            acceptatie to ${{ env.VER }}"
+          pr-body: Automated promotion of freshly published
+            image ${{ github.sha }} to acceptatie.
+          token: ${{ secrets.GH_PAT }}
+          require-sequence: 'false'
+
+  promote-productie:
+    name: Promote productie
+    runs-on: [self-hosted]
+    needs: [promote-acceptatie, detect]
+    if: >
+      always() &&
+      needs.detect.outputs.matrix != '' &&
+      needs.detect.outputs.matrix != '[]' &&
+      (      needs.promote-acceptatie.result == 'success' ||
+      needs.promote-acceptatie.result == 'skipped') &&
+      (inputs.dispatch-environment == '' ||
+      inputs.dispatch-environment == 'productie')
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+    environment: productie
+    concurrency:
+      group: cd-promote-${{ matrix.release.project }}-productie
+      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ${{ fromJSON(needs.detect.outputs.matrix) }}
+    env:
+      PROJECT: ${{ matrix.release.project }}
+      IMAGE_NAME: ${{ matrix.release.image }}
+      REGISTRY: ${{ inputs.registry-host || 'go.berg-connect.nl' }}
+      REPOSITORY: ${{ inputs.repository || 'beheerder' }}
+    steps:
+      - name: Set up .NET
+        uses: ./.github/actions/dotnet-setup
+        with:
+          dotnet-version: ${{ inputs.dotnet-version || '10.0.x' }}
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+          restore-tools: 'true'
+
+      - name: Determine version
+        env:
+          DISPATCH_VERSION: ${{ inputs.dispatch-version }}
+        run: >
+          if [ -n "$DISPATCH_VERSION" ]; then
+          VER="$DISPATCH_VERSION"; else VER=$(cd "src/$PROJECT" && dotnet nbgv
+          get-version -v SemVer2); fi;
+          echo "VER=$VER" >> "$GITHUB_ENV";
+          echo "Version $VER for $PROJECT";
+          [ -n "$VER" ] ||
+          { echo "::error::Lege versie voor $PROJECT"; exit 1; }
+
+      - name: Check published image exists
+        id: gate
+        run: >
+          IMAGE="$REGISTRY/$REPOSITORY/$IMAGE_NAME";
+          skopeo inspect --tls-verify=false --raw
+          --creds "${{ vars.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}"
+          docker://$IMAGE:$VER > /dev/null 2>&1
+          && echo "proceed=true" >> "$GITHUB_OUTPUT"
+          || echo "proceed=false" >> "$GITHUB_OUTPUT"
+
+      - name: Promote productie tag via composite
+        id: promote
+        if: steps.gate.outputs.proceed == 'true'
+        uses: ./.github/actions/bump-image-tag
+        with:
+          project: ${{ matrix.release.project }}
+          env-name: productie
+          version: ${{ env.VER }}
+          image-name: ${{ matrix.release.image }}
+          branch: "ci/promote-${{ matrix.release.project }}-\
+            productie-${{ env.VER }}"
+          commit-message: "ci: promote ${{ matrix.release.image }} \
+            productie to ${{ env.VER }}"
+          pr-title: "ci: promote ${{ matrix.release.image }} \
+            productie to ${{ env.VER }}"
+          pr-body: Automated promotion of freshly published
+            image ${{ github.sha }} to productie.
+          token: ${{ secrets.GH_PAT }}
+          require-sequence: 'true'

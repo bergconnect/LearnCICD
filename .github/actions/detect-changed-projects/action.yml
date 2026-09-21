@@ -1,0 +1,108 @@
+name: 'Detect changed projects'
+description: >
+  Classificeert gewijzigde bestanden naar projecten via de expliciete
+  paths-mapping in .github/projects.json (per project paths + test-paths,
+  globaal select-all + ignore). Onbekende bestanden worden genegeerd
+  (strikt); lege diff geeft een lege matrix. Eén implementatie, gedeeld
+  door ci-template.yml (match-tests: true) en cd-template.yml (false).
+
+inputs:
+  files:
+    description: >
+      Newline-separated lijst van gewijzigde bestandspaden
+      (output van git diff --name-only)
+    required: true
+  match-tests:
+    description: 'Ook test-paths meetellen (CI: true, CD: false)'
+    required: false
+    default: 'true'
+
+outputs:
+  projects:
+    description: >
+      JSON-array met namen van geraakte projecten,
+      bv. ["Api","Worker"]
+    value: ${{ steps.classify.outputs.projects }}
+
+runs:
+  using: composite
+  steps:
+    - name: Classify changed paths
+      id: classify
+      shell: bash
+      env:
+        FILES: ${{ inputs.files }}
+        MATCH_TESTS: ${{ inputs.match-tests }}
+      run: >
+        set -f
+
+        MANIFEST=.github/projects.json;
+        if [ "$(jq -r 'has("_global")' "$MANIFEST")" != "true" ]; then
+        echo "::error::$MANIFEST mist _global-sectie"; exit 1; fi;
+        if [ "$(jq -r '._global["select-all"] // [] | length'
+        "$MANIFEST")" = "0" ];
+        then echo "::error::$MANIFEST _global.select-all is leeg"; exit 1; fi;
+        for P in $(jq -r 'keys[] | select(. != "_global")' "$MANIFEST"); do
+        if [ "$(jq --arg p "$P" '.[$p].paths // [] | length'
+        "$MANIFEST")" = "0" ];
+        then echo "::error::Project '$P' mist paths in $MANIFEST"; exit 1; fi;
+        done;
+        set +f;
+        for P in $(jq -r 'keys[] | select(. != "_global")' "$MANIFEST"); do
+        for pat in $(jq -r --arg p "$P" '.[$p].paths[],
+        .[$p]["test-paths"][]?' "$MANIFEST"); do
+        GEVONDEN=false;
+        for m in $pat; do
+        if [ -e "$m" ]; then GEVONDEN=true; break; fi;
+        done;
+        if [ "$GEVONDEN" = false ]; then
+        echo "::error::Glob '$pat' van '$P' matcht geen bestaand bestand";
+        exit 1; fi;
+        done;
+        done;
+        set -f;
+        PROJECTS=$(jq -r 'keys[] | select(. != "_global")' "$MANIFEST");
+        SELECTED="";
+        while IFS= read -r f; do
+        [ -z "$f" ] && continue;
+        MATCHED=false;
+        for s in $(jq -r '._global["select-all"][]' "$MANIFEST"); do
+        case "$f" in $s)
+        SELECTED="$PROJECTS"; MATCHED=true;
+        echo "classify: $f -> alle (select-all)"; break;;
+        esac;
+        done;
+        if [ "$MATCHED" = false ]; then
+        for P in $PROJECTS; do
+        for pat in $(jq -r --arg p "$P" '.[$p].paths[]?' "$MANIFEST"); do
+        case "$f" in $pat)
+        case " $SELECTED " in *" $P "*) :;; *) SELECTED="$SELECTED $P";; esac;
+        MATCHED=true; echo "classify: $f -> $P"; break;;
+        esac;
+        done;
+        if [ "$MATCHED" = false ] && [ "$MATCH_TESTS" = "true" ]; then
+        for pat in $(jq -r --arg p "$P" '.[$p]["test-paths"][]?'
+        "$MANIFEST"); do
+        case "$f" in $pat)
+        case " $SELECTED " in *" $P "*) :;; *) SELECTED="$SELECTED $P";; esac;
+        MATCHED=true; echo "classify: $f -> $P (test)"; break;;
+        esac;
+        done;
+        fi;
+        if [ "$MATCHED" = true ]; then break; fi;
+        done;
+        fi;
+        if [ "$MATCHED" = false ]; then
+        IGNORED=false;
+        for g in $(jq -r '._global.ignore[]?' "$MANIFEST"); do
+        case "$f" in $g) IGNORED=true; break;; esac;
+        done;
+        if [ "$IGNORED" = true ]; then
+        echo "classify: $f -> genegeerd (ignore-lijst)";
+        else echo "classify: $f -> genegeerd (onbekend)"; fi;
+        fi;
+        done <<< "$FILES";
+        if [ -z "$SELECTED" ]; then JSON="[]";
+        else JSON=$(printf '%s\n' $SELECTED | sort -u | jq -R . | jq -cs .);
+        fi;
+        echo "projects=$JSON" >> "$GITHUB_OUTPUT"
