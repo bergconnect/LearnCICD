@@ -2,3 +2,4 @@ service:
   port: 8082
 image:
   tag: "0.2.13"
+  repository: 192.168.2.100:3003/beheerder/learncicd-worker
