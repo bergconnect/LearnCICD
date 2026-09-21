@@ -27,7 +27,6 @@ jobs:
       contents: read
     outputs:
       projects: ${{ steps.classify.outputs.projects }}
-      workflows: ${{ steps.classify.outputs.workflows }}
     steps:
       - name: Check out code
         uses: actions/checkout@v4
@@ -52,17 +51,26 @@ jobs:
             .github/workflows/ci.yml
             .github/workflows/ci-template.yml
           match-tests: 'true'
-          flag-workflow-changes: 'true'
           ignore-other-src-and-tests: 'false'
           # NB: bewust 'true' — behoudt het bestaande gedrag waarbij een
           # (in de praktijk vrijwel nooit voorkomende) lege diff voor de
           # zekerheid alle projecten test in plaats van geen enkel project.
           select-all-on-empty-diff: 'true'
 
-  test:
-    name: Test
+      - name: Validate unique project versions
+        run: >
+          DUP=$(grep -h '"version"' src/*/version.json
+          | sort | uniq -d);
+          if [ -n "$DUP" ]; then
+          echo "::error::Gedeelde major.minor-versies: $DUP";
+          echo "Elk project vereist een uniek major.minor-nummer";
+          exit 1; fi;
+          echo "Projectversies uniek"
+
+  verify-project:
+    name: Verify
     runs-on: [self-hosted]
-    timeout-minutes: 15
+    timeout-minutes: 20
     permissions:
       contents: read
     needs: [changes]
@@ -70,18 +78,17 @@ jobs:
       needs.changes.outputs.projects != '' &&
       needs.changes.outputs.projects != '[]'
     strategy:
+      fail-fast: false
       matrix:
         project: ${{ fromJSON(needs.changes.outputs.projects) }}
     env:
       PROJECT: ${{ matrix.project }}
     steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-
-      - name: Set up .NET SDK
-        uses: actions/setup-dotnet@v4
+      - name: Set up .NET
+        uses: ./.github/actions/dotnet-setup
         with:
           dotnet-version: ${{ inputs.dotnet-version || '10.0.x' }}
+          token: ${{ github.token }}
 
       - name: Restore dependencies
         run: dotnet restore
@@ -103,33 +110,6 @@ jobs:
           name: coverage-report-${{ matrix.project }}
           path: "**/*.cobertura.xml"
           retention-days: 14
-
-  security:
-    name: Security
-    runs-on: [self-hosted]
-    timeout-minutes: 15
-    permissions:
-      contents: read
-    needs: [changes]
-    if: >
-      needs.changes.outputs.projects != '' &&
-      needs.changes.outputs.projects != '[]'
-    strategy:
-      matrix:
-        project: ${{ fromJSON(needs.changes.outputs.projects) }}
-    env:
-      PROJECT: ${{ matrix.project }}
-    steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-
-      - name: Set up .NET SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: ${{ inputs.dotnet-version || '10.0.x' }}
-
-      - name: Restore dependencies
-        run: dotnet restore
 
       - name: Check for vulnerable packages
         run: >
@@ -155,15 +135,14 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
-    needs: [changes, test, security]
+    needs: [changes, verify-project]
     if: always()
     steps:
       - name: Verify test and security results
         run: >
           for r in
           "${{ needs.changes.result }}"
-          "${{ needs.test.result }}"
-          "${{ needs.security.result }}";
+          "${{ needs.verify-project.result }}";
           do case "$r" in success|skipped) :;;
           *) echo "::error::Unsatisfied result: $r"; exit 1;; esac;
           done

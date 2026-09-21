@@ -23,6 +23,21 @@ on:
         required: false
         default: '10.0.x'
         type: string
+      dispatch-project:
+        description: 'Project-key bij dispatch (leeg = push-pad)'
+        required: false
+        default: ''
+        type: string
+      dispatch-environment:
+        description: 'Doelomgeving bij dispatch (leeg = push-pad)'
+        required: false
+        default: ''
+        type: string
+      dispatch-version:
+        description: 'Image-versie bij dispatch (leeg = nbgv)'
+        required: false
+        default: ''
+        type: string
     secrets:
       GITEA_TOKEN:
         required: true
@@ -61,7 +76,10 @@ jobs:
         run: |
           {
             echo 'files<<EOF'
-            git diff --name-only "$BEFORE" "$AFTER" 2>/dev/null || git diff --name-only HEAD~1 HEAD
+            LIJST=$(git diff --name-only "$BEFORE" "$AFTER" 2>/dev/null ||
+            true);
+            if [ -n "$LIJST" ]; then echo "$LIJST";
+            else git diff --name-only HEAD~1 HEAD; fi
             echo EOF
           } >> "$GITHUB_OUTPUT"
 
@@ -74,7 +92,6 @@ jobs:
             .github/workflows/cd.yml
             .github/workflows/cd-template.yml
           match-tests: 'false'
-          flag-workflow-changes: 'false'
           ignore-other-src-and-tests: 'true'
           select-all-on-empty-diff: 'true'
 
@@ -82,8 +99,19 @@ jobs:
         id: build-matrix
         env:
           PROJECTS: ${{ steps.classify.outputs.projects }}
+          DISPATCH_PROJECT: ${{ inputs.dispatch-project }}
         run: >
           MATRIX_JSON="[]";
+          if [ -n "$DISPATCH_PROJECT" ]; then
+          IMAGE=$(jq -r --arg p "$DISPATCH_PROJECT"
+          '.[$p].image_name // empty' .github/projects.json);
+          if [ -z "$IMAGE" ]; then
+          echo "::error::$DISPATCH_PROJECT ontbreekt
+          in .github/projects.json"; exit 1; fi;
+          MATRIX_JSON=$(jq -n -c --arg p "$DISPATCH_PROJECT"
+          --arg i "$IMAGE" '[{project:$p,image:$i}]');
+          echo "matrix=$MATRIX_JSON" >> "$GITHUB_OUTPUT";
+          exit 0; fi;
           for P in $(echo "$PROJECTS" | jq -r '.[]'); do
           IMAGE=$(jq -r --arg p "$P"
           '.[$p].image_name // empty' .github/projects.json);
@@ -102,7 +130,8 @@ jobs:
     needs: [detect]
     if: >
       needs.detect.outputs.matrix != '' &&
-      needs.detect.outputs.matrix != '[]'
+      needs.detect.outputs.matrix != '[]' &&
+      inputs.dispatch-environment == ''
     timeout-minutes: 20
     permissions:
       contents: read
@@ -117,22 +146,21 @@ jobs:
       REPOSITORY: ${{ inputs.repository || 'beheerder' }}
       BASE_IMAGE: ${{ inputs.base-image }}
     steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up .NET SDK
-        uses: actions/setup-dotnet@v4
+      - name: Set up .NET
+        uses: ./.github/actions/dotnet-setup
         with:
           dotnet-version: ${{ inputs.dotnet-version || '10.0.x' }}
-
-      - name: Restore .NET tools
-        run: dotnet tool restore
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+          restore-tools: 'true'
 
       - name: Determine version
+        env:
+          DISPATCH_VERSION: ${{ inputs.dispatch-version }}
         run: >
-          VER=$(cd "src/$PROJECT" && dotnet nbgv get-version -v SemVer2);
+          if [ -n "$DISPATCH_VERSION" ]; then
+          VER="$DISPATCH_VERSION"; else VER=$(cd "src/$PROJECT" && dotnet nbgv
+          get-version -v SemVer2); fi;
           echo "VER=$VER" >> "$GITHUB_ENV";
           echo "Version $VER for $PROJECT"
 
@@ -164,7 +192,9 @@ jobs:
     if: >
       always() &&
       needs.detect.outputs.matrix != '' &&
-      needs.detect.outputs.matrix != '[]'
+      needs.detect.outputs.matrix != '[]' &&
+      (inputs.dispatch-environment == '' ||
+      inputs.dispatch-environment == 'devtest')
     timeout-minutes: 10
     permissions:
       contents: write
@@ -179,23 +209,21 @@ jobs:
       REGISTRY: ${{ inputs.registry-host || 'go.berg-connect.nl' }}
       REPOSITORY: ${{ inputs.repository || 'beheerder' }}
     steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GH_PAT }}
-          fetch-depth: 0
-
-      - name: Set up .NET SDK
-        uses: actions/setup-dotnet@v4
+      - name: Set up .NET
+        uses: ./.github/actions/dotnet-setup
         with:
           dotnet-version: ${{ inputs.dotnet-version || '10.0.x' }}
-
-      - name: Restore .NET tools
-        run: dotnet tool restore
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+          restore-tools: 'true'
 
       - name: Determine version
+        env:
+          DISPATCH_VERSION: ${{ inputs.dispatch-version }}
         run: >
-          VER=$(cd "src/$PROJECT" && dotnet nbgv get-version -v SemVer2);
+          if [ -n "$DISPATCH_VERSION" ]; then
+          VER="$DISPATCH_VERSION"; else VER=$(cd "src/$PROJECT" && dotnet nbgv
+          get-version -v SemVer2); fi;
           echo "VER=$VER" >> "$GITHUB_ENV";
           echo "Version $VER for $PROJECT";
           [ -n "$VER" ] ||
@@ -238,8 +266,11 @@ jobs:
       always() &&
       needs.detect.outputs.matrix != '' &&
       needs.detect.outputs.matrix != '[]' &&
-      (needs.update-tag.result == 'success' ||
-      needs.update-tag.result == 'skipped')
+      (      needs.update-tag.result == 'success' ||
+      needs.update-tag.result == 'skipped') &&
+      (inputs.dispatch-environment == '' ||
+      inputs.dispatch-environment == 'acceptatie' ||
+      inputs.dispatch-environment == 'productie')
     timeout-minutes: 30
     permissions:
       contents: write
@@ -258,23 +289,21 @@ jobs:
       REGISTRY: ${{ inputs.registry-host || 'go.berg-connect.nl' }}
       REPOSITORY: ${{ inputs.repository || 'beheerder' }}
     steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GH_PAT }}
-          fetch-depth: 0
-
-      - name: Set up .NET SDK
-        uses: actions/setup-dotnet@v4
+      - name: Set up .NET
+        uses: ./.github/actions/dotnet-setup
         with:
           dotnet-version: ${{ inputs.dotnet-version || '10.0.x' }}
-
-      - name: Restore .NET tools
-        run: dotnet tool restore
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+          restore-tools: 'true'
 
       - name: Determine version
+        env:
+          DISPATCH_VERSION: ${{ inputs.dispatch-version }}
         run: >
-          VER=$(cd "src/$PROJECT" && dotnet nbgv get-version -v SemVer2);
+          if [ -n "$DISPATCH_VERSION" ]; then
+          VER="$DISPATCH_VERSION"; else VER=$(cd "src/$PROJECT" && dotnet nbgv
+          get-version -v SemVer2); fi;
           echo "VER=$VER" >> "$GITHUB_ENV";
           echo "Version $VER for $PROJECT";
           [ -n "$VER" ] ||
@@ -318,8 +347,10 @@ jobs:
       always() &&
       needs.detect.outputs.matrix != '' &&
       needs.detect.outputs.matrix != '[]' &&
-      (needs.promote-acceptatie.result == 'success' ||
-      needs.promote-acceptatie.result == 'skipped')
+      (      needs.promote-acceptatie.result == 'success' ||
+      needs.promote-acceptatie.result == 'skipped') &&
+      (inputs.dispatch-environment == '' ||
+      inputs.dispatch-environment == 'productie')
     timeout-minutes: 30
     permissions:
       contents: write
@@ -338,23 +369,21 @@ jobs:
       REGISTRY: ${{ inputs.registry-host || 'go.berg-connect.nl' }}
       REPOSITORY: ${{ inputs.repository || 'beheerder' }}
     steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GH_PAT }}
-          fetch-depth: 0
-
-      - name: Set up .NET SDK
-        uses: actions/setup-dotnet@v4
+      - name: Set up .NET
+        uses: ./.github/actions/dotnet-setup
         with:
           dotnet-version: ${{ inputs.dotnet-version || '10.0.x' }}
-
-      - name: Restore .NET tools
-        run: dotnet tool restore
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+          restore-tools: 'true'
 
       - name: Determine version
+        env:
+          DISPATCH_VERSION: ${{ inputs.dispatch-version }}
         run: >
-          VER=$(cd "src/$PROJECT" && dotnet nbgv get-version -v SemVer2);
+          if [ -n "$DISPATCH_VERSION" ]; then
+          VER="$DISPATCH_VERSION"; else VER=$(cd "src/$PROJECT" && dotnet nbgv
+          get-version -v SemVer2); fi;
           echo "VER=$VER" >> "$GITHUB_ENV";
           echo "Version $VER for $PROJECT";
           [ -n "$VER" ] ||

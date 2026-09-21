@@ -10,6 +10,23 @@ on:
       - '**/*.md'
       - '.gitignore'
       - 'LICENSE'
+  workflow_dispatch:
+    inputs:
+      project:
+        description: >
+          Project-key uit .github/projects.json (geen choice:
+          groeit mee)
+        required: true
+        type: string
+      environment:
+        description: 'Doelomgeving'
+        required: true
+        type: choice
+        options: [devtest, acceptatie, productie]
+      version:
+        description: 'Image-versie (SemVer2, bv. 0.1.77)'
+        required: true
+        type: string
 
 permissions: {}
 
@@ -29,4 +46,7 @@ jobs:
       repository: beheerder
       base-image: mcr.microsoft.com/dotnet/aspnet:10.0
       dotnet-version: 10.0.x
+      dispatch-project: ${{ inputs.project }}
+      dispatch-environment: ${{ inputs.environment }}
+      dispatch-version: ${{ inputs.version }}
     secrets: inherit
