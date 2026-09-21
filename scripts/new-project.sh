@@ -34,11 +34,11 @@ JS
 jq --arg n "$NAAM" --arg i "$KLEIN" --arg c "$KLEIN" '. + {($n): {image_name: $i, chart: $c, paths: ["src/\($n)/**"], "test-paths": ["tests/\($n).Tests/**"]}}' .github/projects.json > /tmp/projects.json && mv /tmp/projects.json .github/projects.json;
 cp -r .infra/learncicd-worker ".infra/$KLEIN";
 grep -rl 'learncicd-worker' ".infra/$KLEIN" | xargs sed -i "s/learncicd-worker/$KLEIN/g";
-for ENV in devtest acceptatie productie; do
-case "$ENV" in devtest) PORT=8080;; acceptatie) PORT=8081;; productie) PORT=8082;; esac;
+for ENV in devtest productie; do
+case "$ENV" in devtest) PORT=8080;; productie) PORT=8082;; esac;
 printf 'service:\n  port: %s\nimage:\n  tag: ""\n' "$PORT" > ".infra/$KLEIN/values-$ENV.yaml";
 done;
-for ENV in devtest acceptatie productie; do
+for ENV in devtest productie; do
 sed -e "s/learncicd-worker/$KLEIN/g" "argocd/applications/learncicd-worker-devtest.yaml" > "/tmp/app.yaml";
 python3 - "$KLEIN" "$ENV" <<'PY' > "argocd/applications/$KLEIN-$ENV.yaml"
 import sys

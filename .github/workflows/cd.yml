@@ -22,7 +22,7 @@ on:
         description: 'Doelomgeving'
         required: true
         type: choice
-        options: [devtest, acceptatie, productie]
+        options: [devtest, productie]
       version:
         description: 'Image-versie (SemVer2, bv. 0.1.77)'
         required: true
@@ -37,7 +37,7 @@ permissions: {}
 
 jobs:
   cd:
-    uses: bergconnect/cicd-workflows/.github/workflows/cd-template.yml@v1
+    uses: bergconnect/cicd-workflows/.github/workflows/cd-template.yml@v2
     permissions:
       contents: write
       pull-requests: write

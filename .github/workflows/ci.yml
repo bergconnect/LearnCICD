@@ -13,7 +13,7 @@ permissions: {}
 
 jobs:
   ci:
-    uses: bergconnect/cicd-workflows/.github/workflows/ci-template.yml@v1
+    uses: bergconnect/cicd-workflows/.github/workflows/ci-template.yml@v2
     permissions:
       contents: read
     with:
