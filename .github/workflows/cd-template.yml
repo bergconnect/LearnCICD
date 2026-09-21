@@ -74,7 +74,6 @@ jobs:
             .github/workflows/cd.yml
             .github/workflows/cd-template.yml
           match-tests: 'false'
-          flag-workflow-changes: 'false'
           ignore-other-src-and-tests: 'true'
           select-all-on-empty-diff: 'true'
 
@@ -117,18 +116,13 @@ jobs:
       REPOSITORY: ${{ inputs.repository || 'beheerder' }}
       BASE_IMAGE: ${{ inputs.base-image }}
     steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up .NET SDK
-        uses: actions/setup-dotnet@v4
+      - name: Set up .NET
+        uses: ./.github/actions/dotnet-setup
         with:
           dotnet-version: ${{ inputs.dotnet-version || '10.0.x' }}
-
-      - name: Restore .NET tools
-        run: dotnet tool restore
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+          restore-tools: 'true'
 
       - name: Determine version
         run: >
@@ -179,19 +173,13 @@ jobs:
       REGISTRY: ${{ inputs.registry-host || 'go.berg-connect.nl' }}
       REPOSITORY: ${{ inputs.repository || 'beheerder' }}
     steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GH_PAT }}
-          fetch-depth: 0
-
-      - name: Set up .NET SDK
-        uses: actions/setup-dotnet@v4
+      - name: Set up .NET
+        uses: ./.github/actions/dotnet-setup
         with:
           dotnet-version: ${{ inputs.dotnet-version || '10.0.x' }}
-
-      - name: Restore .NET tools
-        run: dotnet tool restore
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+          restore-tools: 'true'
 
       - name: Determine version
         run: >
@@ -258,19 +246,13 @@ jobs:
       REGISTRY: ${{ inputs.registry-host || 'go.berg-connect.nl' }}
       REPOSITORY: ${{ inputs.repository || 'beheerder' }}
     steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GH_PAT }}
-          fetch-depth: 0
-
-      - name: Set up .NET SDK
-        uses: actions/setup-dotnet@v4
+      - name: Set up .NET
+        uses: ./.github/actions/dotnet-setup
         with:
           dotnet-version: ${{ inputs.dotnet-version || '10.0.x' }}
-
-      - name: Restore .NET tools
-        run: dotnet tool restore
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+          restore-tools: 'true'
 
       - name: Determine version
         run: >
@@ -338,19 +320,13 @@ jobs:
       REGISTRY: ${{ inputs.registry-host || 'go.berg-connect.nl' }}
       REPOSITORY: ${{ inputs.repository || 'beheerder' }}
     steps:
-      - name: Check out code
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GH_PAT }}
-          fetch-depth: 0
-
-      - name: Set up .NET SDK
-        uses: actions/setup-dotnet@v4
+      - name: Set up .NET
+        uses: ./.github/actions/dotnet-setup
         with:
           dotnet-version: ${{ inputs.dotnet-version || '10.0.x' }}
-
-      - name: Restore .NET tools
-        run: dotnet tool restore
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+          restore-tools: 'true'
 
       - name: Determine version
         run: >
