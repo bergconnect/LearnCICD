@@ -1,4 +1,4 @@
 service:
   port: 8082
 image:
-  tag: ""
+  tag: "0.2.13"
