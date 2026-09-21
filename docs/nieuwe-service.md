@@ -94,4 +94,5 @@ Bij workflow-wijzigingen: draai `actionlint` en `yamllint` (alleen de 2 bekende 
 2. Open een PR naar `main` en controleer dat de CI-matrix een leg voor `<Naam>` draait (andere projecten skippen of ontbreken).
 3. Na merge: controleer dat de CD-run een image voor `<Naam>` publiceert en dat de ArgoCD-app synct (`kubectl get applications -n argocd`, pods `Running`).
 
-Acceptatie/productie vallen buiten dit stappenplan en volgen de bestaande promote-flow.
+Handmatig promoten: CD-`workflow_dispatch` (project + omgeving + versie)
+met dezelfde approval-gates als de push-flow.
