@@ -1,39 +1,27 @@
 name: 'Detect changed projects'
 description: >
-  Classificeert een lijst gewijzigde bestanden naar de set .NET-projecten
-  onder src/ die daardoor geraakt zijn. Eén implementatie, gedeeld door
-  ci-template.yml en cd-template.yml, geparametriseerd voor de kleine
-  gedragsverschillen tussen CI en CD. Projecten worden ontdekt via `ls src`
-  — een nieuw project onder src/ wordt dus automatisch meegenomen zonder
-  dat deze action of de aanroepende workflow aangepast hoeft te worden.
+  Classificeert gewijzigde bestanden naar projecten via de expliciete
+  paths-mapping in .github/projects.json (per project paths + test-paths,
+  globaal select-all + ignore). Onbekende bestanden worden genegeerd
+  (strikt); lege diff geeft een lege matrix. Eén implementatie, gedeeld
+  door ci-template.yml (match-tests: true) en cd-template.yml (false).
 
 inputs:
   files:
-    description: 'Newline-separated lijst van gewijzigde bestandspaden (output van git diff --name-only)'
-    required: true
-  own-workflow-files:
     description: >
-      Newline-separated paden die altijd alle projecten selecteren: de
-      workflow-bestanden van de aanroeper zelf (bv. ci.yml + ci-template.yml).
+      Newline-separated lijst van gewijzigde bestandspaden
+      (output van git diff --name-only)
     required: true
   match-tests:
-    description: 'Ook tests/<Project>.Tests/** meetellen als wijziging van dat project (CI: true, CD: false)'
+    description: 'Ook test-paths meetellen (CI: true, CD: false)'
     required: false
     default: 'true'
-  ignore-other-src-and-tests:
-    description: >
-      Genegeerde src/*/** en tests/*-wijzigingen die geen bekend project raken
-      stil negeren in plaats van alle projecten te selecteren (CD: true, CI: false).
-    required: false
-    default: 'false'
-  select-all-on-empty-diff:
-    description: 'Selecteer alle projecten wanneer de files-lijst leeg is (CI en CD: true — zie opmerking in SKILL/README)'
-    required: false
-    default: 'false'
 
 outputs:
   projects:
-    description: 'JSON-array met namen van geraakte projecten, bv. ["Api","Worker"]'
+    description: >
+      JSON-array met namen van geraakte projecten,
+      bv. ["Api","Worker"]
     value: ${{ steps.classify.outputs.projects }}
 
 runs:
@@ -44,82 +32,77 @@ runs:
       shell: bash
       env:
         FILES: ${{ inputs.files }}
-        OWN_WORKFLOW_FILES_RAW: ${{ inputs.own-workflow-files }}
         MATCH_TESTS: ${{ inputs.match-tests }}
-        IGNORE_OTHER_SRC_AND_TESTS: ${{ inputs.ignore-other-src-and-tests }}
-        SELECT_ALL_ON_EMPTY_DIFF: ${{ inputs.select-all-on-empty-diff }}
-      run: |
+      run: >
         set -f
 
-        PROJECTS=$(ls src)
-        OWN_WORKFLOW_FILES=$(printf '%s' "$OWN_WORKFLOW_FILES_RAW" | tr '\n' ' ')
-
-        SELECTED=""
-
-        if [ -z "$FILES" ] && [ "$SELECT_ALL_ON_EMPTY_DIFF" = "true" ]; then
-          SELECTED="$PROJECTS"
-        else
-          while IFS= read -r f; do
-            [ -z "$f" ] && continue
-            MATCHED=false
-
-            case "$f" in
-              global.json|version.json|*.sln|Directory.*)
-                SELECTED="$PROJECTS"; MATCHED=true;;
-            esac
-
-            if [ "$MATCHED" = false ]; then
-              for own in $OWN_WORKFLOW_FILES; do
-                if [ "$f" = "$own" ]; then
-                  SELECTED="$PROJECTS"; MATCHED=true; break
-                fi
-              done
-            fi
-
-            if [ "$MATCHED" = false ]; then
-              for P in $PROJECTS; do
-                if [ "$MATCH_TESTS" = "true" ]; then
-                  case "$f" in
-                    src/$P/**|tests/$P.Tests/**)
-                      case " $SELECTED " in *" $P "*) :;; *) SELECTED="$SELECTED $P";; esac
-                      MATCHED=true; break;;
-                  esac
-                else
-                  case "$f" in
-                    src/$P/**)
-                      case " $SELECTED " in *" $P "*) :;; *) SELECTED="$SELECTED $P";; esac
-                      MATCHED=true; break;;
-                  esac
-                fi
-              done
-            fi
-
-            if [ "$MATCHED" = false ]; then
-              if [ "$IGNORE_OTHER_SRC_AND_TESTS" = "true" ]; then
-                case "$f" in
-                  src/*/**|tests/*|.github/*|.infra/*|argocd/*)
-                    :;;
-                  docs/*|*.md|.gitignore|LICENSE)
-                    :;;
-                  *)
-                    SELECTED="$PROJECTS";;
-                esac
-              else
-                case "$f" in
-                  .github/*)
-                    :;;
-                  .infra/*|argocd/*|docs/*|*.md|.gitignore|LICENSE)
-                    :;;
-                  *)
-                    SELECTED="$PROJECTS";;
-                esac
-              fi
-            fi
-          done <<< "$FILES"
-        fi
-
+        MANIFEST=.github/projects.json;
+        if [ "$(jq -r 'has("_global")' "$MANIFEST")" != "true" ]; then
+        echo "::error::$MANIFEST mist _global-sectie"; exit 1; fi;
+        if [ "$(jq -r '._global["select-all"] // [] | length'
+        "$MANIFEST")" = "0" ];
+        then echo "::error::$MANIFEST _global.select-all is leeg"; exit 1; fi;
+        for P in $(jq -r 'keys[] | select(. != "_global")' "$MANIFEST"); do
+        if [ "$(jq --arg p "$P" '.[$p].paths // [] | length'
+        "$MANIFEST")" = "0" ];
+        then echo "::error::Project '$P' mist paths in $MANIFEST"; exit 1; fi;
+        done;
+        set +f;
+        for P in $(jq -r 'keys[] | select(. != "_global")' "$MANIFEST"); do
+        for pat in $(jq -r --arg p "$P" '.[$p].paths[],
+        .[$p]["test-paths"][]?' "$MANIFEST"); do
+        GEVONDEN=false;
+        for m in $pat; do
+        if [ -e "$m" ]; then GEVONDEN=true; break; fi;
+        done;
+        if [ "$GEVONDEN" = false ]; then
+        echo "::error::Glob '$pat' van '$P' matcht geen bestaand bestand";
+        exit 1; fi;
+        done;
+        done;
+        set -f;
+        PROJECTS=$(jq -r 'keys[] | select(. != "_global")' "$MANIFEST");
+        SELECTED="";
+        while IFS= read -r f; do
+        [ -z "$f" ] && continue;
+        MATCHED=false;
+        for s in $(jq -r '._global["select-all"][]' "$MANIFEST"); do
+        case "$f" in $s)
+        SELECTED="$PROJECTS"; MATCHED=true;
+        echo "classify: $f -> alle (select-all)"; break;;
+        esac;
+        done;
+        if [ "$MATCHED" = false ]; then
+        for P in $PROJECTS; do
+        for pat in $(jq -r --arg p "$P" '.[$p].paths[]?' "$MANIFEST"); do
+        case "$f" in $pat)
+        case " $SELECTED " in *" $P "*) :;; *) SELECTED="$SELECTED $P";; esac;
+        MATCHED=true; echo "classify: $f -> $P"; break;;
+        esac;
+        done;
+        if [ "$MATCHED" = false ] && [ "$MATCH_TESTS" = "true" ]; then
+        for pat in $(jq -r --arg p "$P" '.[$p]["test-paths"][]?'
+        "$MANIFEST"); do
+        case "$f" in $pat)
+        case " $SELECTED " in *" $P "*) :;; *) SELECTED="$SELECTED $P";; esac;
+        MATCHED=true; echo "classify: $f -> $P (test)"; break;;
+        esac;
+        done;
+        fi;
+        if [ "$MATCHED" = true ]; then break; fi;
+        done;
+        fi;
+        if [ "$MATCHED" = false ]; then
+        IGNORED=false;
+        for g in $(jq -r '._global.ignore[]?' "$MANIFEST"); do
+        case "$f" in $g) IGNORED=true; break;; esac;
+        done;
+        if [ "$IGNORED" = true ]; then
+        echo "classify: $f -> genegeerd (ignore-lijst)";
+        else echo "classify: $f -> genegeerd (onbekend)"; fi;
+        fi;
+        done <<< "$FILES";
         if [ -z "$SELECTED" ]; then JSON="[]";
         else JSON=$(printf '%s\n' $SELECTED | sort -u | jq -R . | jq -cs .);
-        fi
-
+        fi;
         echo "projects=$JSON" >> "$GITHUB_OUTPUT"

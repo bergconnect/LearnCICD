@@ -1,10 +1,18 @@
 {
   "Api": {
     "image_name": "learncicd-api",
-    "chart": "learncicd"
+    "chart": "learncicd",
+    "paths": ["src/Api/**"],
+    "test-paths": ["tests/Api.Tests/**"]
   },
   "Worker": {
     "image_name": "learncicd-worker",
-    "chart": "learncicd-worker"
+    "chart": "learncicd-worker",
+    "paths": ["src/Worker/**"],
+    "test-paths": ["tests/Worker.Tests/**"]
+  },
+  "_global": {
+    "select-all": ["global.json", "version.json", "*.sln", "Directory.*", ".github/workflows/ci.yml", ".github/workflows/ci-template.yml", ".github/workflows/cd.yml", ".github/workflows/cd-template.yml"],
+    "ignore": [".infra/**", "argocd/**", "docs/**", "**/*.md", ".gitignore", "LICENSE"]
   }
 }

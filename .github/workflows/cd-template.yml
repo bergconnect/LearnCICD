@@ -88,12 +88,7 @@ jobs:
         uses: ./.github/actions/detect-changed-projects
         with:
           files: ${{ steps.diff.outputs.files }}
-          own-workflow-files: |
-            .github/workflows/cd.yml
-            .github/workflows/cd-template.yml
           match-tests: 'false'
-          ignore-other-src-and-tests: 'true'
-          select-all-on-empty-diff: 'true'
 
       - name: Build publish matrix
         id: build-matrix
