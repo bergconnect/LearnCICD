@@ -6,7 +6,7 @@ builder.Services.AddOpenApi();
 var app = builder.Build();
 
 app.MapGet("/health", () => Results.Ok("Healthy"));
-app.MapGet("/helloworld", () => Results.Ok("Hello, CI/CD!"));
+app.MapGet("/helloworld", () => Results.Ok("Hello, Roundtrip!"));
 
 if (app.Environment.IsDevelopment())
 {
