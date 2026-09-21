@@ -47,15 +47,7 @@ jobs:
         uses: ./.github/actions/detect-changed-projects
         with:
           files: ${{ steps.diff.outputs.files }}
-          own-workflow-files: |
-            .github/workflows/ci.yml
-            .github/workflows/ci-template.yml
           match-tests: 'true'
-          ignore-other-src-and-tests: 'false'
-          # NB: bewust 'true' — behoudt het bestaande gedrag waarbij een
-          # (in de praktijk vrijwel nooit voorkomende) lege diff voor de
-          # zekerheid alle projecten test in plaats van geen enkel project.
-          select-all-on-empty-diff: 'true'
 
       - name: Validate unique project versions
         run: >

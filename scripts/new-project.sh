@@ -31,7 +31,7 @@ cat > "src/$NAAM/version.json" <<JS
   ]
 }
 JS
-jq --arg n "$NAAM" --arg i "$KLEIN" --arg c "$KLEIN" '. + {($n): {image_name: $i, chart: $c}}' .github/projects.json > /tmp/projects.json && mv /tmp/projects.json .github/projects.json;
+jq --arg n "$NAAM" --arg i "$KLEIN" --arg c "$KLEIN" '. + {($n): {image_name: $i, chart: $c, paths: ["src/\($n)/**"], "test-paths": ["tests/\($n).Tests/**"]}}' .github/projects.json > /tmp/projects.json && mv /tmp/projects.json .github/projects.json;
 cp -r .infra/learncicd-worker ".infra/$KLEIN";
 grep -rl 'learncicd-worker' ".infra/$KLEIN" | xargs sed -i "s/learncicd-worker/$KLEIN/g";
 for ENV in devtest acceptatie productie; do
