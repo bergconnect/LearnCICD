@@ -12,7 +12,7 @@ spec:
     helm:
       valueFiles:
         - $values/.infra/learncicd-worker/values.yaml
-        - $values/.infra/learncicd-worker/values-devtest.yaml
+        - $values/.infra/learncicd-worker/values_dev.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: devtest
