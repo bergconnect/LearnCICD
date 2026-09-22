@@ -12,7 +12,7 @@ spec:
     helm:
       valueFiles:
         - $values/.infra/learncicd/values.yaml
-        - $values/.infra/learncicd/values-productie.yaml
+        - $values/.infra/learncicd/values_prod.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: productie

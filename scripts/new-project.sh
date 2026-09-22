@@ -35,21 +35,21 @@ jq --arg n "$NAAM" --arg i "$KLEIN" --arg c "$KLEIN" '. + {($n): {image_name: $i
 cp -r .infra/learncicd-worker ".infra/$KLEIN";
 grep -rl 'learncicd-worker' ".infra/$KLEIN" | xargs sed -i "s/learncicd-worker/$KLEIN/g";
 for ENV in devtest productie; do
-case "$ENV" in devtest) PORT=8080;; productie) PORT=8082;; esac;
-printf 'service:\n  port: %s\nimage:\n  tag: ""\n' "$PORT" > ".infra/$KLEIN/values-$ENV.yaml";
+case "$ENV" in devtest) PORT=8080; VFILE=values_dev.yaml;; productie) PORT=8082; VFILE=values_prod.yaml;; esac;
+printf 'service:\n  port: %s\nimage:\n  tag: ""\n' "$PORT" > ".infra/$KLEIN/$VFILE";
 done;
 for ENV in devtest productie; do
 sed -e "s/learncicd-worker/$KLEIN/g" "argocd/applications/learncicd-worker-devtest.yaml" > "/tmp/app.yaml";
-python3 - "$KLEIN" "$ENV" <<'PY' > "argocd/applications/$KLEIN-$ENV.yaml"
+python3 - "$KLEIN" "$ENV" "$VFILE" <<'PY' > "argocd/applications/$KLEIN-$ENV.yaml"
 import sys
 txt = open('/tmp/app.yaml').read()
 txt = txt.replace(f'{sys.argv[1]}-devtest', f'{sys.argv[1]}-{sys.argv[2]}')
-txt = txt.replace('values-devtest.yaml', f'values-{sys.argv[2]}.yaml')
+txt = txt.replace('values_dev.yaml', sys.argv[3])
 txt = txt.replace('namespace: devtest', f'namespace: {sys.argv[2]}')
 print(txt, end='')
 PY
 done;
 echo "Klaar. Verifieer met:";
 echo "(cd src/$NAAM && dotnet nbgv get-version -v SemVer2)";
-echo "helm lint .infra/$KLEIN -f .infra/$KLEIN/values.yaml -f .infra/$KLEIN/values-devtest.yaml";
+echo "helm lint .infra/$KLEIN -f .infra/$KLEIN/values.yaml -f .infra/$KLEIN/values_dev.yaml";
 echo "dotnet test --project tests/$NAAM.Tests/$NAAM.Tests.csproj -c Release";
