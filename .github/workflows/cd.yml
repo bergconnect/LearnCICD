@@ -37,7 +37,7 @@ permissions: {}
 
 jobs:
   cd:
-    uses: bergconnect/cicd-workflows/.github/workflows/cd-template.yml@v4
+    uses: bergconnect/cicd-workflows/.github/workflows/cd-template.yml@v5
     permissions:
       contents: write
       pull-requests: write
@@ -45,7 +45,6 @@ jobs:
       registry-host: ${{ vars.GITEA_LOCAL }}
       repository: beheerder
       base-image: mcr.microsoft.com/dotnet/aspnet:10.0
-      dotnet-version: 10.0.x
       dispatch-project: ${{ inputs.project }}
       dispatch-environment: ${{ inputs.environment }}
       dispatch-version: ${{ inputs.version }}
