@@ -8,7 +8,7 @@
   "Worker": {
     "image_name": "learncicd-worker",
     "chart": "learncicd-worker",
-    "paths": ["src/Worker/**"],
+    "paths": ["src/Worker/**", "src/Shared/**"],
     "test-paths": ["tests/Worker.Tests/**"]
   },
   "_global": {
