@@ -8,7 +8,7 @@ Voer uit (vervang `<Naam>` door de servicenaam, bijvoorbeeld `Billing`):
 scripts/new-project.sh <Naam>
 ```
 
-Eisen aan `<Naam>`: alfanumeriek en beginnend met een letter. Het script kiest zelf een ongebruikt `0.x`-versienummer en legt alles aan: code (`src/<Naam>`), tests (`tests/<Naam>.Tests`), solution-registratie, `src/<Naam>/version.json`, een entry in `.github/projects.json`, de chart (`.infra/<naam>`) en de twee ArgoCD-apps (devtest en productie).
+Eisen aan `<Naam>`: alfanumeriek en beginnend met een letter. Het script kiest zelf een ongebruikt `0.x`-versienummer en legt alles aan: code (`src/<Naam>`), tests (`tests/<Naam>.Tests`), solution-registratie, `src/<Naam>/version.json`, een entry in `.github/projects.json`, de chart (`.infra/<naam>`) en de twee ArgoCD-apps (dev en prd).
 
 Controleer de output van het script en draai daarna de verificatie hieronder (§5).
 

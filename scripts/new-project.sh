@@ -34,18 +34,18 @@ JS
 jq --arg n "$NAAM" --arg i "$KLEIN" --arg c "$KLEIN" '. + {($n): {image_name: $i, chart: $c, paths: ["src/\($n)/**"], "test-paths": ["tests/\($n).Tests/**"]}}' .github/projects.json > /tmp/projects.json && mv /tmp/projects.json .github/projects.json;
 cp -r .infra/learncicd-worker ".infra/$KLEIN";
 grep -rl 'learncicd-worker' ".infra/$KLEIN" | xargs sed -i "s/learncicd-worker/$KLEIN/g";
-for ENV in devtest productie; do
-case "$ENV" in devtest) PORT=8080; VFILE=values_dev.yaml;; productie) PORT=8082; VFILE=values_prod.yaml;; esac;
+for ENV in dev prd; do
+case "$ENV" in dev) PORT=8080; VFILE=values_dev.yaml;; prd) PORT=8082; VFILE=values_prd.yaml;; esac;
 printf 'service:\n  port: %s\nimage:\n  tag: ""\n' "$PORT" > ".infra/$KLEIN/$VFILE";
 done;
-for ENV in devtest productie; do
-sed -e "s/learncicd-worker/$KLEIN/g" "argocd/applications/learncicd-worker-devtest.yaml" > "/tmp/app.yaml";
+for ENV in dev prd; do
+sed -e "s/learncicd-worker/$KLEIN/g" "argocd/applications/learncicd-worker-dev.yaml" > "/tmp/app.yaml";
 python3 - "$KLEIN" "$ENV" "$VFILE" <<'PY' > "argocd/applications/$KLEIN-$ENV.yaml"
 import sys
 txt = open('/tmp/app.yaml').read()
-txt = txt.replace(f'{sys.argv[1]}-devtest', f'{sys.argv[1]}-{sys.argv[2]}')
+txt = txt.replace(f'{sys.argv[1]}-dev', f'{sys.argv[1]}-{sys.argv[2]}')
 txt = txt.replace('values_dev.yaml', sys.argv[3])
-txt = txt.replace('namespace: devtest', f'namespace: {sys.argv[2]}')
+txt = txt.replace('namespace: dev', f'namespace: {sys.argv[2]}')
 print(txt, end='')
 PY
 done;
