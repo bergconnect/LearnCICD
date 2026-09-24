@@ -39,6 +39,7 @@ case "$ENV" in dev) PORT=8080; VFILE=values_dev.yaml;; prd) PORT=8082; VFILE=val
 printf 'service:\n  port: %s\nimage:\n  tag: ""\n' "$PORT" > ".infra/$KLEIN/$VFILE";
 done;
 for ENV in dev prd; do
+case "$ENV" in dev) VFILE=values_dev.yaml;; prd) VFILE=values_prd.yaml;; esac;
 sed -e "s/learncicd-worker/$KLEIN/g" "argocd/applications/learncicd-worker-dev.yaml" > "/tmp/app.yaml";
 python3 - "$KLEIN" "$ENV" "$VFILE" <<'PY' > "argocd/applications/$KLEIN-$ENV.yaml"
 import sys
