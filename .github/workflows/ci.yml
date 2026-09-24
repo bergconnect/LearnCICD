@@ -13,8 +13,6 @@ permissions: {}
 
 jobs:
   ci:
-    uses: bergconnect/cicd-workflows/.github/workflows/ci-template.yml@v4
+    uses: bergconnect/cicd-workflows/.github/workflows/ci-template.yml@v5
     permissions:
       contents: read
-    with:
-      dotnet-version: 10.0.x
