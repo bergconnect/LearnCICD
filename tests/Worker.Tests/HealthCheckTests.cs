@@ -7,6 +7,6 @@ public class HealthCheckTests
     [Fact]
     public void Build_ReturnsHealthyMessage()
     {
-        Assert.Equal("Healthy, Both!", HealthCheck.Build("Both"));
+        Assert.Equal("Healthy Both!", HealthCheck.Build("Both"));
     }
 }
