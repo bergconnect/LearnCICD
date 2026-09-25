@@ -1,0 +1,42 @@
+name: Promote
+
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: >
+          Project-key uit .github/projects.json (geen choice:
+          groeit mee)
+        required: true
+        type: string
+      version:
+        description: 'Image-versie (SemVer2, bv. 0.1.77)'
+        required: true
+        type: string
+      environment:
+        description: 'Doelomgeving'
+        required: false
+        default: 'prd'
+        type: choice
+        options: [dev, prd]
+
+permissions: {}
+
+# NOTE: no concurrency block here on purpose. A top-level concurrency
+# block on a caller workflow prevents GitHub from expanding reusable
+# workflow jobs (run fails instantly with 0 jobs, no error surfaced).
+# The template keeps its own concurrency block (proven harmless).
+
+jobs:
+  promote:
+    uses: bergconnect/cicd-workflows/.github/workflows/promote-template.yml@v7
+    permissions:
+      contents: write
+      pull-requests: write
+    with:
+      project: ${{ inputs.project }}
+      version: ${{ inputs.version }}
+      environment: ${{ inputs.environment }}
+      registry-host: ${{ vars.GITEA_LOCAL }}
+      repository: beheerder
+    secrets: inherit
