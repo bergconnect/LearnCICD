@@ -164,11 +164,8 @@ jobs:
           EXISTING_DST_DIGEST=$(skopeo inspect --tls-verify=false
           --creds "$DST_CREDS" "$DST_URL" 2>/dev/null
           | jq -r '.Digest // empty' || true);
-          if [ -n "$EXISTING_DST_DIGEST" ] &&
+          if [ -z "$EXISTING_DST_DIGEST" ] ||
           [ "$EXISTING_DST_DIGEST" != "$SOURCE_DIGEST" ]; then
-          echo "::error::Destination-tag bestaat al met een andere digest";
-          exit 1; fi;
-          if [ -z "$EXISTING_DST_DIGEST" ]; then
           skopeo copy --src-tls-verify=false --dest-tls-verify=false
           --src-creds "$SRC_CREDS" --dest-creds "$DST_CREDS"
           "$SRC_DIGEST_URL" "$DST_URL";
