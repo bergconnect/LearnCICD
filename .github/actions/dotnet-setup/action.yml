@@ -1,0 +1,36 @@
+name: 'Setup .NET with tools'
+# LESSEN (niet verwijderen bij refactor):
+# - run: > (NOOIT run: | met multi-line $(...): newline = scheiding, exit 127)
+# - Geen top-level concurrency op callers; inputs-defaults; matrix-guards.
+# - Composites erven geen secrets; export voor strenv(); yq -r; diff-guards.
+description: >
+  Checkout, .NET SDK-setup en (optioneel) tool-restore. Eén preambule
+  voor alle CI/CD-legs in plaats van herhaalde drietallen steps.
+inputs:
+  fetch-depth:
+    description: 'Checkout-diepte (0 = volledig, nodig voor nbgv)'
+    required: false
+    default: '1'
+  token:
+    description: 'Checkout-token, expliciet (composites erven geen secrets)'
+    required: true
+  restore-tools:
+    description: "'true' draait ook dotnet tool restore"
+    required: false
+    default: 'false'
+runs:
+  using: composite
+  steps:
+    - name: Check out code
+      uses: actions/checkout@v4
+      with:
+        token: ${{ inputs.token }}
+        fetch-depth: ${{ inputs.fetch-depth }}
+    - name: Set up .NET SDK
+      uses: actions/setup-dotnet@v4
+      with:
+        global-json-file: global.json
+    - name: Restore .NET tools
+      if: ${{ inputs.restore-tools == 'true' }}
+      shell: bash
+      run: dotnet tool restore

@@ -1,0 +1,261 @@
+name: CD dev template
+# LESSEN (niet verwijderen bij refactor):
+# - run: > (NOOIT run: | met multi-line $(...): newline = scheiding, exit 127)
+# - Geen top-level concurrency op callers; inputs-defaults; matrix-guards.
+# - Composites erven geen secrets; export voor strenv(); yq -r; diff-guards.
+# - SDK-versiebron = global.json (enige bron; geen dotnet-version-inputs).
+# - Push-only: geen dispatch-inputs, geen auto-environments, geen prd-job.
+#   Promotie naar prd loopt uitsluitend via promote-template.yml.
+
+on:
+  workflow_call:
+    inputs:
+      registry-host:
+        description: 'Registry-host voor image-referenties'
+        required: false
+        default: 'go.berg-connect.nl'
+        type: string
+      repository:
+        description: 'Repository-namespace voor images'
+        required: false
+        default: 'beheerder'
+        type: string
+      base-image:
+        description: 'Runtime base-image voor dotnet publish'
+        required: false
+        default: 'mcr.microsoft.com/dotnet/aspnet:10.0'
+        type: string
+    secrets:
+      GITEA_TOKEN:
+        required: true
+      GH_PAT:
+        required: true
+      BOT_GPG_PRIVATE_KEY:
+        required: true
+
+env:
+  DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
+
+permissions: {}
+
+concurrency:
+  group: cd-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  detect:
+    name: Detect changed projects
+    runs-on: [self-hosted]
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      matrix: ${{ steps.build-matrix.outputs.matrix }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Diff changed paths
+        id: diff
+        env:
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+        run: |
+          {
+            echo 'files<<EOF'
+            LIJST=$(git diff --name-only "$BEFORE" "$AFTER" 2>/dev/null ||
+            true);
+            if [ -n "$LIJST" ]; then echo "$LIJST";
+            else git diff --name-only HEAD~1 HEAD; fi
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Classify changed paths
+        id: classify
+        uses: ../actions/detect-changed-projects
+        with:
+          files: ${{ steps.diff.outputs.files }}
+          match-tests: 'false'
+
+      - name: Build publish matrix
+        id: build-matrix
+        env:
+          PROJECTS: ${{ steps.classify.outputs.projects }}
+        run: >
+          MATRIX_JSON="[]";
+          for P in $(echo "$PROJECTS" | jq -r '.[]'); do
+          IMAGE=$(jq -r --arg p "$P"
+          '.[$p].image_name // empty' .github/projects.json);
+          if [ -z "$IMAGE" ]; then
+          echo "::error::$P ontbreekt in .github/projects.json"; exit 1; fi;
+          ITEM=$(jq -n --arg p "$P" --arg i "$IMAGE"
+          '{project:$p,image:$i}');
+          MATRIX_JSON=$(echo "$MATRIX_JSON" | jq -c --argjson i "$ITEM"
+          '. + [$i]');
+          done;
+          echo "matrix=$MATRIX_JSON" >> "$GITHUB_OUTPUT"
+
+  determine-version:
+    name: Determine versions
+    runs-on: [self-hosted]
+    needs: [detect]
+    if: >
+      needs.detect.outputs.matrix != '' &&
+      needs.detect.outputs.matrix != '[]'
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      versions: ${{ steps.resolve.outputs.versions }}
+    steps:
+      - name: Set up .NET
+        uses: ../actions/dotnet-setup
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+          restore-tools: 'true'
+
+      - name: Resolve versions
+        id: resolve
+        env:
+          MATRIX: ${{ needs.detect.outputs.matrix }}
+        run: >
+          VERSIONS="{}";
+          for P in $(echo "$MATRIX" | jq -r '.[].project'); do
+          VER=$(cd "src/$P" && dotnet nbgv get-version -v SemVer2);
+          if [ -z "$VER" ]; then
+          echo "::error::Lege versie voor $P"; exit 1; fi;
+          echo "Version $VER for $P";
+          VERSIONS=$(echo "$VERSIONS" | jq -c --arg p "$P"
+          --arg v "$VER" '. + {($p): $v}');
+          done;
+          echo "versions=$VERSIONS" >> "$GITHUB_OUTPUT"
+
+  publish:
+    name: Publish image
+    runs-on: [self-hosted]
+    needs: [detect, determine-version]
+    if: >
+      needs.detect.outputs.matrix != '' &&
+      needs.detect.outputs.matrix != '[]'
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ${{ fromJSON(needs.detect.outputs.matrix) }}
+    env:
+      PROJECT: ${{ matrix.release.project }}
+      IMAGE_NAME: ${{ matrix.release.image }}
+      REGISTRY: ${{ inputs.registry-host || 'go.berg-connect.nl' }}
+      REPOSITORY: ${{ inputs.repository || 'beheerder' }}
+      BASE_IMAGE: ${{ inputs.base-image }}
+    steps:
+      - name: Set up .NET
+        uses: ../actions/dotnet-setup
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+          restore-tools: 'true'
+
+      - name: Set version
+        env:
+          VER_MAP: ${{ needs.determine-version.outputs.versions }}
+        run: >
+          VER=$(echo "$VER_MAP" | jq -r --arg p "$PROJECT"
+          '.[$p] // empty');
+          echo "VER=$VER" >> "$GITHUB_ENV";
+          echo "Version $VER for $PROJECT"
+
+      - name: Build image archive with dotnet publish
+        run: >
+          BASE_IMAGE="${BASE_IMAGE:-mcr.microsoft.com/dotnet/aspnet:10.0}";
+          dotnet publish "src/$PROJECT/$PROJECT.csproj"
+          --os linux --arch x64
+          -c Release
+          -p:ContainerBaseImage=$BASE_IMAGE
+          -p:ContainerRepository=$REGISTRY/$REPOSITORY/$IMAGE_NAME
+          -p:ContainerImageTag=$VER
+          /t:PublishContainer
+          -p:ContainerArchiveOutputPath=/tmp/image-$PROJECT.tar
+
+      - name: Push version tag with Skopeo
+        run: >
+          IMAGE="$REGISTRY/$REPOSITORY/$IMAGE_NAME";
+          skopeo copy --tls-verify=false
+          --dest-username ${{ vars.GITEA_USER }}
+          --dest-password ${{ secrets.GITEA_TOKEN }}
+          docker-archive:/tmp/image-$PROJECT.tar:$IMAGE:$VER
+          docker://$IMAGE:$VER
+
+  update-tag:
+    name: Update image tag
+    runs-on: [self-hosted]
+    needs: [publish, detect, determine-version]
+    if: >
+      always() &&
+      needs.detect.outputs.matrix != '' &&
+      needs.detect.outputs.matrix != '[]' &&
+      needs.determine-version.result == 'success'
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ${{ fromJSON(needs.detect.outputs.matrix) }}
+    env:
+      PROJECT: ${{ matrix.release.project }}
+      IMAGE_NAME: ${{ matrix.release.image }}
+      REGISTRY: ${{ inputs.registry-host || 'go.berg-connect.nl' }}
+      REPOSITORY: ${{ inputs.repository || 'beheerder' }}
+      VER_MAP: ${{ needs.determine-version.outputs.versions }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+          fetch-depth: 0
+
+      - name: Set version
+        run: >
+          VER=$(echo "$VER_MAP" | jq -r --arg p "$PROJECT"
+          '.[$p] // empty');
+          echo "VER=$VER" >> "$GITHUB_ENV";
+          echo "Version $VER for $PROJECT";
+          [ -n "$VER" ] ||
+          { echo "::error::Lege versie voor $PROJECT"; exit 1; }
+
+      - name: Check published image exists
+        id: gate
+        run: >
+          IMAGE="$REGISTRY/$REPOSITORY/$IMAGE_NAME";
+          skopeo inspect --tls-verify=false --raw
+          --creds "${{ vars.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}"
+          docker://$IMAGE:$VER > /dev/null 2>&1
+          && echo "proceed=true" >> "$GITHUB_OUTPUT"
+          || echo "proceed=false" >> "$GITHUB_OUTPUT"
+
+      - name: Bump dev tag via composite
+        id: promote
+        if: steps.gate.outputs.proceed == 'true'
+        uses: ../actions/bump-image-tag
+        with:
+          project: ${{ matrix.release.project }}
+          env-name: dev
+          version: ${{ env.VER }}
+          image-name: ${{ matrix.release.image }}
+          branch: ci/image-tag-update-${{ matrix.release.image }}
+          commit-message: "ci: update ${{ matrix.release.image }} \
+            dev tag to ${{ env.VER }}"
+          pr-title: "ci: update image tag \
+            ${{ matrix.release.image }}:${{ env.VER }} to dev"
+          pr-body: Automated tag update for freshly published image
+            ${{ github.sha }}.
+          token: ${{ secrets.GH_PAT }}
+          gpg-key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
+          key-id: ${{ vars.BOT_GPG_KEYID }}
