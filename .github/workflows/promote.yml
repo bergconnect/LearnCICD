@@ -18,7 +18,7 @@ on:
         required: false
         default: 'prd'
         type: choice
-        options: [dev, prd]
+        options: [dev, prd, acc]
 
 permissions: {}
 
