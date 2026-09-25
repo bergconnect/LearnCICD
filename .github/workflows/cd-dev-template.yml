@@ -150,8 +150,8 @@ jobs:
     env:
       PROJECT: ${{ matrix.release.project }}
       IMAGE_NAME: ${{ matrix.release.image }}
-      REGISTRY: ${{ inputs.registry-host || 'go.berg-connect.nl' }}
-      REPOSITORY: ${{ inputs.repository || 'beheerder' }}
+      REGISTRY: ${{ inputs.registry-host }}
+      REPOSITORY: ${{ inputs.repository }}
       BASE_IMAGE: ${{ inputs.base-image }}
     steps:
       - name: Set up .NET
@@ -172,7 +172,6 @@ jobs:
 
       - name: Build image archive with dotnet publish
         run: >
-          BASE_IMAGE="${BASE_IMAGE:-mcr.microsoft.com/dotnet/aspnet:10.0}";
           dotnet publish "src/$PROJECT/$PROJECT.csproj"
           --os linux --arch x64
           -c Release
@@ -211,8 +210,8 @@ jobs:
     env:
       PROJECT: ${{ matrix.release.project }}
       IMAGE_NAME: ${{ matrix.release.image }}
-      REGISTRY: ${{ inputs.registry-host || 'go.berg-connect.nl' }}
-      REPOSITORY: ${{ inputs.repository || 'beheerder' }}
+      REGISTRY: ${{ inputs.registry-host }}
+      REPOSITORY: ${{ inputs.repository }}
       VER_MAP: ${{ needs.determine-version.outputs.versions }}
     steps:
       - name: Check out code
