@@ -18,7 +18,7 @@ on:
         required: false
         default: 'prd'
         type: choice
-        options: [dev, prd]
+        options: [dev, prd, acc]
 
 permissions: {}
 
@@ -29,7 +29,7 @@ permissions: {}
 
 jobs:
   promote:
-    uses: bergconnect/cicd-workflows/.github/workflows/promote-template.yml@v7
+    uses: bergconnect/cicd-workflows/.github/workflows/promote-template.yml@v8
     permissions:
       contents: write
       pull-requests: write
