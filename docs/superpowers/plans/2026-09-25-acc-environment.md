@@ -302,12 +302,10 @@ Verwacht: `acc`.
 - [ ] **Step 2: Apps toepassen op cluster**
 
 ```bash
-ssh -o ConnectTimeout=10 192.168.2.46 'kubectl apply -f - <<YAMLEOF
-$(git show origin/main:argocd/applications/learncicd-acc.yaml)
-YAMLEOF'
+scp argocd/applications/learncicd-acc.yaml argocd/applications/learncicd-worker-acc.yaml 192.168.2.46:/tmp/
+ssh -o ConnectTimeout=10 192.168.2.46 'kubectl apply -f /tmp/learncicd-acc.yaml && kubectl apply -f /tmp/learncicd-worker-acc.yaml && shred -u /tmp/learncicd-acc.yaml /tmp/learncicd-worker-acc.yaml'
 ```
-
-Herhaal voor `learncicd-worker-acc.yaml`. (`CreateNamespace=true`
+(`CreateNamespace=true` in de apps
 maakt namespace `acc` automatisch; `selfHeal` houdt sync vast.)
 Wacht 90s, controleer:
 
