@@ -60,6 +60,27 @@ niet vereist.
 
 ## Buiten scope
 
-- Aparte `promote.yml` (aanpak B, afgewezen: extra caller-onderhoud).
 - Keten-met-approval (aanpak C, afgewezen: geen bewuste start).
 - SealedSecret dual-ownership-cosmetica (bestaand, los traject).
+
+## Amendement 2026-09-25: aparte promote-workflow (aanpak B alsnog)
+
+Reden: GitHub toont geskipte jobs als grijze node in de run-grafiek.
+Eén workflow (aanpak A) is functioneel correct (bewezen: run
+36117735610, `Promote prd → skipped`), maar de Promote-node blijft
+zichtbaar in elke push-run. Owner-besluit: promotie krijgt een eigen
+`promote.yml`, push-runs tonen nooit meer Promote.
+
+- Centraal (`v7`): splits in `cd-dev-template.yml` (push-keten zonder
+  prd-job: detect → versions → publish → promote-dev) en
+  `promote-template.yml` (dispatch-only: valideren EERST, dan copy,
+  bump, auto-PR). `cd-template.yml` vervalt (of wordt thin wrapper —
+  centrale keuze, geen dubbele logica).
+- Lokaal: `cd.yml` wordt push-only (dispatch-inputs weg) en pint
+  `cd-dev-template@v7`; nieuw `promote.yml` (dispatch-only:
+  `project` + `version` + `environment` in `[dev, prd]`, default
+  `prd`) pint `promote-template@v7`. `ci.yml` mee naar `@v7`.
+- Validatie-volgorde in `promote-template`: SemVer + registry-check
+  vóór copy (verbetering t.o.v. v6, waar validatie na copy stond).
+- Bewijsronde verschuift naar v7: één handmatige promote (dev-tag
+  0.1.246 of nieuwer) + pull-bewijs in doel-env.
