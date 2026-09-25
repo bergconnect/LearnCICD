@@ -18,11 +18,12 @@ on:
         required: true
         type: string
       environment:
-        description: 'Doelomgeving'
-        required: false
-        default: 'prd'
+        description: 'Doelomgeving (bewust kiezen, geen default)'
+        required: true
         type: choice
-        options: [dev, prd, acc]
+        # acc vooraan: als de UI toch iets preselecteert, is het
+        # de onschuldige optie (nooit prd per ongeluk)
+        options: [acc, dev, prd]
 
 permissions: {}
 
