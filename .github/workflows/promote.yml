@@ -29,7 +29,7 @@ permissions: {}
 
 jobs:
   promote:
-    uses: bergconnect/cicd-workflows/.github/workflows/promote-template.yml@v9
+    uses: bergconnect/cicd-workflows/.github/workflows/promote-template.yml@v10
     permissions:
       contents: write
       pull-requests: write
