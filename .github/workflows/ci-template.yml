@@ -103,6 +103,7 @@ jobs:
 
       - name: Check for vulnerable packages
         run: >
+          set -o pipefail;
           dotnet list "src/$PROJECT/$PROJECT.csproj" package
           --vulnerable --include-transitive | tee audit.log;
           dotnet list "tests/$PROJECT.Tests/$PROJECT.Tests.csproj"

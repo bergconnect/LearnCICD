@@ -75,6 +75,7 @@ jobs:
       contents: read
     outputs:
       image: ${{ steps.resolve.outputs.image }}
+      digest: ${{ steps.inspect.outputs.digest }}
     steps:
       - name: Check out code
         # actions/checkout v4.2.2
@@ -109,6 +110,7 @@ jobs:
           echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
 
       - name: Check version exists in registry
+        id: inspect
         env:
           IMAGE_NAME: ${{ steps.resolve.outputs.image }}
           REGISTRY: ${{ inputs.registry-host || 'go.berg-connect.nl' }}
@@ -118,8 +120,13 @@ jobs:
         run: >
           IMAGE="$REGISTRY/$REPOSITORY/$IMAGE_NAME";
           skopeo inspect --tls-verify=false
-          --creds "$SRC_CREDS" docker://$IMAGE:$VER > /dev/null ||
+          --creds "$SRC_CREDS" docker://$IMAGE:$VER > inspect.json ||
           { echo "::error::$IMAGE:$VER ontbreekt in registry"; exit 1; };
+          DIGEST=$(jq -r '.Digest // empty' inspect.json);
+          rm -f inspect.json;
+          [ -n "$DIGEST" ] ||
+          { echo "::error::Geen digest gevonden voor $IMAGE:$VER"; exit 1; };
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
 
   copy-image:
     name: Copy image to ${{ inputs.environment }} registry
@@ -132,6 +139,7 @@ jobs:
     env:
       PROJECT: ${{ inputs.project }}
       IMAGE_NAME: ${{ needs.validate.outputs.image }}
+      SOURCE_DIGEST: ${{ needs.validate.outputs.digest }}
       REGISTRY: ${{ inputs.registry-host || 'go.berg-connect.nl' }}
       REPOSITORY: ${{ inputs.repository || 'beheerder' }}
       VER: ${{ inputs.version }}
@@ -148,12 +156,18 @@ jobs:
           mkdir -p "$XDG_RUNTIME_DIR";
           if [ "$DST_TOKEN_SET" != "true" ]; then
           echo "::error::GITEA_DST_TOKEN ontbreekt"; exit 1; fi;
-          SRC="$REGISTRY/$REPOSITORY/$IMAGE_NAME:$VER";
           DST="$DST_REGISTRY/$DST_REPOSITORY/$IMAGE_NAME:$VER";
+          SRC_URL="docker://$REGISTRY/$REPOSITORY/$IMAGE_NAME@$SOURCE_DIGEST";
+          DST_URL="docker://$DST";
           skopeo copy --src-tls-verify=false --dest-tls-verify=false
-          --src-creds "$SRC_CREDS" --dest-creds "$DST_CREDS"
-          "docker://$SRC" "docker://$DST";
-          echo "Gekopieerd: $DST"
+          --preserve-digests --src-creds "$SRC_CREDS"
+          --dest-creds "$DST_CREDS" "$SRC_URL" "$DST_URL";
+          DST_DIGEST=$(skopeo inspect --tls-verify=false
+          --creds "$DST_CREDS" "$DST_URL" | jq -r '.Digest // empty');
+          if [ "$DST_DIGEST" != "$SOURCE_DIGEST" ]; then
+          echo "::error::Destination-digest wijkt af ($DST_DIGEST vs
+          $SOURCE_DIGEST)"; exit 1; fi;
+          echo "Gekopieerd + geverifieerd: $DST @$DST_DIGEST"
 
   promote:
     name: Promote tag to ${{ inputs.environment }}
