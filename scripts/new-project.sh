@@ -34,12 +34,12 @@ JS
 jq --arg n "$NAAM" --arg i "$KLEIN" --arg c "$KLEIN" '. + {($n): {image_name: $i, chart: $c, paths: ["src/\($n)/**"], "test-paths": ["tests/\($n).Tests/**"]}}' .github/projects.json > /tmp/projects.json && mv /tmp/projects.json .github/projects.json;
 cp -r .infra/learncicd-worker ".infra/$KLEIN";
 grep -rl 'learncicd-worker' ".infra/$KLEIN" | xargs sed -i "s/learncicd-worker/$KLEIN/g";
-for ENV in dev prd; do
-case "$ENV" in dev) PORT=8080; VFILE=values_dev.yaml;; prd) PORT=8082; VFILE=values_prd.yaml;; esac;
+for ENV in dev prd acc; do
+case "$ENV" in dev) PORT=8080; VFILE=values_dev.yaml;; prd) PORT=8082; VFILE=values_prd.yaml;; acc) PORT=8081; VFILE=values_acc.yaml;; esac;
 printf 'service:\n  port: %s\nimage:\n  tag: ""\n' "$PORT" > ".infra/$KLEIN/$VFILE";
 done;
-for ENV in dev prd; do
-case "$ENV" in dev) VFILE=values_dev.yaml;; prd) VFILE=values_prd.yaml;; esac;
+for ENV in dev prd acc; do
+case "$ENV" in dev) VFILE=values_dev.yaml;; prd) VFILE=values_prd.yaml;; acc) VFILE=values_acc.yaml;; esac;
 sed -e "s/learncicd-worker/$KLEIN/g" "argocd/applications/learncicd-worker-dev.yaml" > "/tmp/app.yaml";
 python3 - "$KLEIN" "$ENV" "$VFILE" <<'PY' > "argocd/applications/$KLEIN-$ENV.yaml"
 import sys
