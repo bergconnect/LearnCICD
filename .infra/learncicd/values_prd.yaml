@@ -1,5 +1,5 @@
 service:
   port: 8082
 image:
-  tag: "0.1.234"
+  tag: "0.1.249"
   repository: 192.168.2.100:3003/beheerder/learncicd-api
