@@ -10,23 +10,6 @@ on:
       - '**/*.md'
       - '.gitignore'
       - 'LICENSE'
-  workflow_dispatch:
-    inputs:
-      project:
-        description: >
-          Project-key uit .github/projects.json (geen choice:
-          groeit mee)
-        required: true
-        type: string
-      environment:
-        description: 'Doelomgeving'
-        required: true
-        type: choice
-        options: [dev, prd]
-      version:
-        description: 'Image-versie (SemVer2, bv. 0.1.77)'
-        required: true
-        type: string
 
 permissions: {}
 
@@ -37,7 +20,7 @@ permissions: {}
 
 jobs:
   cd:
-    uses: bergconnect/cicd-workflows/.github/workflows/cd-template.yml@v6
+    uses: bergconnect/cicd-workflows/.github/workflows/cd-dev-template.yml@v7
     permissions:
       contents: write
       pull-requests: write
@@ -45,7 +28,4 @@ jobs:
       registry-host: ${{ vars.GITEA_LOCAL }}
       repository: beheerder
       base-image: mcr.microsoft.com/dotnet/aspnet:10.0
-      dispatch-project: ${{ inputs.project }}
-      dispatch-environment: ${{ inputs.environment }}
-      dispatch-version: ${{ inputs.version }}
     secrets: inherit

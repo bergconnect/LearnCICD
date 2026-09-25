@@ -12,7 +12,7 @@
     "test-paths": ["tests/Worker.Tests/**"]
   },
   "_global": {
-    "select-all": ["global.json", "version.json", "*.sln", "Directory.*", ".github/workflows/ci.yml", ".github/workflows/ci-template.yml", ".github/workflows/cd.yml", ".github/workflows/cd-template.yml"],
+    "select-all": ["global.json", "version.json", "*.sln", "Directory.*", ".github/workflows/ci.yml", ".github/workflows/ci-template.yml", ".github/workflows/cd.yml", ".github/workflows/cd-dev-template.yml", ".github/workflows/promote.yml"],
     "ignore": [".infra/**", "argocd/**", "docs/**", "**/*.md", ".gitignore", "LICENSE"]
   }
 }
