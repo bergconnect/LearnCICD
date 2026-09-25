@@ -13,6 +13,6 @@ permissions: {}
 
 jobs:
   ci:
-    uses: ./ci-template.yml
+    uses: ./.github/workflows/ci-template.yml
     permissions:
       contents: read

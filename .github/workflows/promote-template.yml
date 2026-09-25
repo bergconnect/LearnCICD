@@ -219,7 +219,7 @@ jobs:
 
       - name: Promote tag to ${{ inputs.environment }} via composite
         id: promote
-        uses: ../actions/bump-image-tag
+        uses: ./.github/actions/bump-image-tag
         with:
           project: ${{ inputs.project }}
           env-name: ${{ inputs.environment }}

@@ -43,7 +43,7 @@ jobs:
 
       - name: Classify changed paths
         id: classify
-        uses: ../actions/detect-changed-projects
+        uses: ./.github/actions/detect-changed-projects
         with:
           files: ${{ steps.diff.outputs.files }}
           match-tests: 'true'
@@ -76,7 +76,7 @@ jobs:
       PROJECT: ${{ matrix.project }}
     steps:
       - name: Set up .NET
-        uses: ../actions/dotnet-setup
+        uses: ./.github/actions/dotnet-setup
         with:
           token: ${{ github.token }}
 

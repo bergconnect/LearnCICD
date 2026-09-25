@@ -34,7 +34,7 @@ permissions: {}
 
 jobs:
   promote:
-    uses: ./promote-template.yml
+    uses: ./.github/workflows/promote-template.yml
     permissions:
       contents: write
       pull-requests: write
