@@ -1,4 +1,3 @@
-// probe: prd-promote v6 proof round (no-op, cleanup via revert-PR)
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
