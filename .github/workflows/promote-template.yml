@@ -113,8 +113,8 @@ jobs:
         id: inspect
         env:
           IMAGE_NAME: ${{ steps.resolve.outputs.image }}
-          REGISTRY: ${{ inputs.registry-host || 'go.berg-connect.nl' }}
-          REPOSITORY: ${{ inputs.repository || 'beheerder' }}
+          REGISTRY: ${{ inputs.registry-host }}
+          REPOSITORY: ${{ inputs.repository }}
           VER: ${{ inputs.version }}
           SRC_CREDS: ${{ vars.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}
         run: >
@@ -140,8 +140,8 @@ jobs:
       PROJECT: ${{ inputs.project }}
       IMAGE_NAME: ${{ needs.validate.outputs.image }}
       SOURCE_DIGEST: ${{ needs.validate.outputs.digest }}
-      REGISTRY: ${{ inputs.registry-host || 'go.berg-connect.nl' }}
-      REPOSITORY: ${{ inputs.repository || 'beheerder' }}
+      REGISTRY: ${{ inputs.registry-host }}
+      REPOSITORY: ${{ inputs.repository }}
       VER: ${{ inputs.version }}
     steps:
       - name: Copy image to ${{ inputs.environment }} registry
@@ -189,8 +189,8 @@ jobs:
     env:
       PROJECT: ${{ inputs.project }}
       IMAGE_NAME: ${{ needs.validate.outputs.image }}
-      REGISTRY: ${{ inputs.registry-host || 'go.berg-connect.nl' }}
-      REPOSITORY: ${{ inputs.repository || 'beheerder' }}
+      REGISTRY: ${{ inputs.registry-host }}
+      REPOSITORY: ${{ inputs.repository }}
       VER: ${{ inputs.version }}
       TARGET: ${{ inputs.environment }}
     steps:
