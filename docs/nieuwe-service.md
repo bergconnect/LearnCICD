@@ -27,5 +27,10 @@ Bij workflow-wijzigingen: draai `actionlint` en `yamllint` (alleen de 2 bekende 
 2. Open een PR naar `main` en controleer dat de CI-matrix een leg voor `<Naam>` draait (andere projecten skippen of ontbreken).
 3. Na merge: controleer dat de CD-run een image voor `<Naam>` publiceert en dat de ArgoCD-app synct (`kubectl get applications -n argocd`, pods `Running`).
 
-Handmatig promoten: CD-`workflow_dispatch` (project + omgeving + versie)
-met dezelfde approval-gates als de push-flow.
+Handmatig promoten naar `prd`: ga naar de Actions-tab → `CD` →
+`Run workflow` en vul `project` (sleutel uit `.github/projects.json`,
+bijvoorbeeld `Api`) + `version` (SemVer2) in met `environment: prd`.
+Kies als versie de huidige dev-tag uit `.infra/<chart>/values_dev.yaml`;
+een downgrade alleen bewust. Daarna geldt dezelfde flow als bij de
+push-flow (met dezelfde approval-gates): registry-validatie → auto-PR →
+automerge → ArgoCD synct `prd`.
