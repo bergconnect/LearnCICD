@@ -1,5 +1,9 @@
 name: Promote
 
+run-name: >-
+  Promote ${{ inputs.project }} ${{ inputs.version }}
+  to ${{ inputs.environment }}
+
 on:
   workflow_dispatch:
     inputs:
