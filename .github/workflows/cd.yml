@@ -20,7 +20,7 @@ permissions: {}
 
 jobs:
   cd:
-    uses: bergconnect/cicd-workflows/.github/workflows/cd-dev-template.yml@v14
+    uses: ./.github/workflows/cd-dev-template.yml
     permissions:
       contents: write
       pull-requests: write
