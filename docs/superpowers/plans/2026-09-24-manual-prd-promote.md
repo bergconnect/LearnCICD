@@ -306,7 +306,7 @@ zodat `main` schoon achterblijft.
 
 ```bash
 git checkout main && git pull -q origin main && git status --short
-grep -rn "@v5" .github/workflows/ && echo OUD-GEVONDEN || echo "geen oude pins"
+grep -rnE "@v[567]" .github/workflows/ | grep -v "@v7" && echo OUD-GEVONDEN || echo "geen oude pins"
 ```
 
 Verwacht: lege status, geen oude pins.
@@ -323,3 +323,110 @@ rm -rf /tmp/opencode/cicd-wf
 Meld: spec + plan gemerged, keten bewezen (dev-versie `V`,
 prd-promotie-run-id, pull-bewijs), resterende minors (OutOfSync-cosmetica,
 SealedSecret-template-watch).
+
+---
+
+## Amendement 2026-09-25: aparte promote-workflow (v7)
+
+Task 6 is gereduceerd (v6 auto-dev live bewezen via #221/#222;
+dispatch-bewijs verschoven naar v7). Nieuwe taken:
+
+### Task 8: Centraal — splits cd-template in dev + promote (tag v7)
+
+**Files:**
+- Create (centraal): `.github/workflows/cd-dev-template.yml` (push-keten
+  zonder prd-job: detect → versions → publish → promote-dev)
+- Create (centraal): `.github/workflows/promote-template.yml`
+  (dispatch-only: SemVer + registry-validatie EERST, dan copy, bump,
+  auto-PR)
+- Modify/Delete (centraal): `.github/workflows/cd-template.yml`
+  (vervalt of thin wrapper — geen dubbele logica; centrale keuze)
+
+**Interfaces:**
+- Consumes: v6 op `main` (3db9ba2); hergebruik Task 1+2-logica
+  (auto-environments waar nog relevant, validatie vóór copy)
+- Produces: centrale tag `v7` met beide templates; v1–v6 ongewijzigd
+
+- [ ] **Step 1: Clone/fetch centrale repo, nieuwe branch**
+
+```bash
+git clone https://github.com/bergconnect/cicd-workflows.git /tmp/opencode/cicd-wf7
+git checkout -b feat/split-dev-promote-templates
+```
+
+Lees `cd-template.yml` volledig vóór het splitsen.
+
+- [ ] **Step 2: Bouw beide templates**
+
+`cd-dev-template.yml`: kopie van de push-leg zonder prd-promote-job
+(geen `auto-environments` meer nodig als prd nergens voorkomt;
+dispatch-inputs mogen vervallen — beslis en documenteer).
+`promote-template.yml`: dispatch-only met inputs `project`,
+`version`, `environment` (`[dev, prd]`, default `prd`);
+volgorde: valideren → copy → bump → auto-PR.
+
+- [ ] **Step 3: yamllint, PR, merge, tag v7**
+
+```bash
+yamllint .github/workflows/cd-dev-template.yml .github/workflows/promote-template.yml
+```
+
+PR → `m_state: clean` → merge → `git tag v7 <merge-commit>`
+(`git push origin v7`; v7 bestaat nog niet, dus geen `-f`).
+Verifieer v1–v6-SHA's ongewijzigd via `git ls-remote --tags`.
+
+### Task 9: Lokaal — promote.yml + pins @v7
+
+**Files:**
+- Modify: `.github/workflows/cd.yml` (push-only: dispatch-inputs weg;
+  pint `cd-dev-template.yml@v7`)
+- Create: `.github/workflows/promote.yml` (dispatch-only: `project`
+  + `version` + `environment` `[dev, prd]` default `prd`; pint
+  `promote-template.yml@v7`; `permissions: contents/write,
+  pull-requests/write`; `secrets: inherit`; géén top-level
+  `concurrency`, géén job `name:`)
+- Modify: `.github/workflows/ci.yml` (pin `ci-template.yml@v6` → `@v7`)
+- Modify: `docs/nieuwe-service.md` (promote-paragraaf: `CD` →
+  `Promote`-workflow als startpunt)
+
+**Interfaces:**
+- Consumes: Task 8 (v7 bestaat)
+- Produces: PR (pins + nieuwe caller + docs), `m_state: clean`,
+  NIET zelf mergen
+
+- [ ] **Step 1: Branch + edits + proofs**
+
+```bash
+git checkout -b feat/promote-workflow-v7 origin/main
+grep -rnE "cicd-workflows/.github/(workflows|actions)/.*@v[67]" .github/workflows/ | grep -v "@v7" && echo MIX-GEVONDEN || echo "pins schoon"
+```
+
+- [ ] **Step 2: Commit, push, PR (base `main`), wacht clean**
+
+### Task 10: Bewijsronde v7
+
+**Files:** Geen (live verificatie)
+
+**Interfaces:**
+- Consumes: Task 9 gemerged (main pint `@v7`)
+- Produces: push-run ZONDER Promote-node + handmatige promote met
+  pull-bewijs
+
+- [ ] **Step 1: Push-bewijs**
+
+Na merge van Task 9: eerstvolgende push-run op `main` tonen dat de
+job-lijst GEEN `Promote`-node bevat (alleen Detect → Determine →
+Publish → Update image tag).
+
+- [ ] **Step 2: Handmatige promote via promote.yml**
+
+Actions-tab → `Promote` → Run workflow (`project=Api`,
+`version=<huidige dev-tag>`, `environment=prd`). Wacht op
+validatie → bump-PR → automerge. Negatief-bewijs: dispatch met
+onbestaande versie (bv. `0.0.0-niet-bestaand`) moet rood falen
+VÓÓR PR-aanmaak (registry-validatie).
+
+- [ ] **Step 3: Pull-bewijs in prd**
+
+ArgoCD synct prd; pod draait nieuwe tag, Running. Bij twijfel:
+onbestaande-tag-test (verwacht `not found`, geen 401).
