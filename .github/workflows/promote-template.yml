@@ -25,11 +25,6 @@ on:
         required: false
         default: 'prd'
         type: string
-      registry-host:
-        description: 'Registry-host voor image-referenties'
-        required: false
-        default: 'go.berg-connect.nl'
-        type: string
       repository:
         description: 'Repository-namespace voor images'
         required: false
@@ -66,6 +61,8 @@ jobs:
     outputs:
       image: ${{ steps.resolve.outputs.image }}
       digest: ${{ steps.inspect.outputs.digest }}
+      registry: ${{ steps.inspect.outputs.registry }}
+    environment: dev
     steps:
       - name: Check out code
         # actions/checkout v4.2.2
@@ -103,11 +100,13 @@ jobs:
         id: inspect
         env:
           IMAGE_NAME: ${{ steps.resolve.outputs.image }}
-          REGISTRY: ${{ inputs.registry-host }}
+          REGISTRY: ${{ vars.GITEA_LOCAL }}
           REPOSITORY: ${{ inputs.repository }}
           VER: ${{ inputs.version }}
           SRC_CREDS: ${{ vars.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}
         run: >
+          [ -n "$REGISTRY" ] ||
+          { echo "::error::GITEA_LOCAL ontbreekt op environment dev"; exit 1; };
           IMAGE="$REGISTRY/$REPOSITORY/$IMAGE_NAME";
           skopeo inspect --tls-verify=false
           --creds "$SRC_CREDS" docker://$IMAGE:$VER > inspect.json ||
@@ -116,7 +115,8 @@ jobs:
           rm -f inspect.json;
           [ -n "$DIGEST" ] ||
           { echo "::error::Geen digest gevonden voor $IMAGE:$VER"; exit 1; };
-          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT"
+          echo "digest=$DIGEST" >> "$GITHUB_OUTPUT";
+          echo "registry=$REGISTRY" >> "$GITHUB_OUTPUT"
 
   copy-image:
     name: Copy image to ${{ inputs.environment }} registry
@@ -130,7 +130,7 @@ jobs:
       PROJECT: ${{ inputs.project }}
       IMAGE_NAME: ${{ needs.validate.outputs.image }}
       SOURCE_DIGEST: ${{ needs.validate.outputs.digest }}
-      REGISTRY: ${{ inputs.registry-host }}
+      REGISTRY: ${{ needs.validate.outputs.registry }}
       REPOSITORY: ${{ inputs.repository }}
       VER: ${{ inputs.version }}
       TARGET: ${{ inputs.environment }}
@@ -184,8 +184,6 @@ jobs:
     env:
       PROJECT: ${{ inputs.project }}
       IMAGE_NAME: ${{ needs.validate.outputs.image }}
-      REGISTRY: ${{ inputs.registry-host }}
-      REPOSITORY: ${{ inputs.repository }}
       VER: ${{ inputs.version }}
       TARGET: ${{ inputs.environment }}
     steps:
