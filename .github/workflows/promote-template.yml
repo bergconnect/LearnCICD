@@ -25,11 +25,6 @@ on:
         required: false
         default: 'prd'
         type: string
-      repository:
-        description: 'Repository-namespace voor images'
-        required: false
-        default: 'beheerder'
-        type: string
     secrets:
       GITEA_TOKEN:
         required: true
@@ -62,6 +57,7 @@ jobs:
       image: ${{ steps.resolve.outputs.image }}
       digest: ${{ steps.inspect.outputs.digest }}
       registry: ${{ steps.inspect.outputs.registry }}
+      repository: ${{ steps.inspect.outputs.repository }}
     environment: dev
     steps:
       - name: Check out code
@@ -101,12 +97,14 @@ jobs:
         env:
           IMAGE_NAME: ${{ steps.resolve.outputs.image }}
           REGISTRY: ${{ vars.GITEA_LOCAL }}
-          REPOSITORY: ${{ inputs.repository }}
+          REPOSITORY: ${{ vars.GITEA_SOURCE_REPOSITORY }}
           VER: ${{ inputs.version }}
           SRC_CREDS: ${{ vars.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}
         run: >
           [ -n "$REGISTRY" ] ||
           { echo "::error::GITEA_LOCAL ontbreekt op environment dev"; exit 1; };
+          [ -n "$REPOSITORY" ] ||
+          { echo "::error::GITEA_SOURCE_REPOSITORY ontbreekt"; exit 1; };
           IMAGE="$REGISTRY/$REPOSITORY/$IMAGE_NAME";
           skopeo inspect --tls-verify=false
           --creds "$SRC_CREDS" docker://$IMAGE:$VER > inspect.json ||
@@ -116,7 +114,8 @@ jobs:
           [ -n "$DIGEST" ] ||
           { echo "::error::Geen digest gevonden voor $IMAGE:$VER"; exit 1; };
           echo "digest=$DIGEST" >> "$GITHUB_OUTPUT";
-          echo "registry=$REGISTRY" >> "$GITHUB_OUTPUT"
+          echo "registry=$REGISTRY" >> "$GITHUB_OUTPUT";
+          echo "repository=$REPOSITORY" >> "$GITHUB_OUTPUT"
 
   copy-image:
     name: Copy image to ${{ inputs.environment }} registry
@@ -131,7 +130,7 @@ jobs:
       IMAGE_NAME: ${{ needs.validate.outputs.image }}
       SOURCE_DIGEST: ${{ needs.validate.outputs.digest }}
       REGISTRY: ${{ needs.validate.outputs.registry }}
-      REPOSITORY: ${{ inputs.repository }}
+      REPOSITORY: ${{ needs.validate.outputs.repository }}
       VER: ${{ inputs.version }}
       TARGET: ${{ inputs.environment }}
     steps:

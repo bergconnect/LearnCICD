@@ -42,5 +42,4 @@ jobs:
       project: ${{ inputs.project }}
       version: ${{ inputs.version }}
       environment: ${{ inputs.environment }}
-      repository: beheerder
     secrets: inherit
