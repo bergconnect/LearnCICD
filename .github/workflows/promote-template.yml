@@ -35,16 +35,6 @@ on:
         required: false
         default: 'beheerder'
         type: string
-      dest-registry-host:
-        description: 'Registry-host prd (kopie-bestemming)'
-        required: false
-        default: '192.168.2.100:3003'
-        type: string
-      dest-repository:
-        description: 'Repository-namespace op prd-registry'
-        required: false
-        default: 'beheerder'
-        type: string
     secrets:
       GITEA_TOKEN:
         required: true
@@ -132,7 +122,7 @@ jobs:
     name: Copy image to ${{ inputs.environment }} registry
     runs-on: [self-hosted]
     needs: [validate]
-    if: inputs.environment == 'prd' || inputs.environment == 'acc'
+    environment: ${{ inputs.environment }}
     timeout-minutes: 10
     permissions:
       contents: read
@@ -143,19 +133,25 @@ jobs:
       REGISTRY: ${{ inputs.registry-host }}
       REPOSITORY: ${{ inputs.repository }}
       VER: ${{ inputs.version }}
+      TARGET: ${{ inputs.environment }}
     steps:
       - name: Copy image to ${{ inputs.environment }} registry
+        if: inputs.environment == 'prd' || inputs.environment == 'acc'
         env:
           XDG_RUNTIME_DIR: ${{ runner.temp }}/runtime
           SRC_CREDS: ${{ vars.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}
           DST_CREDS: ${{ vars.GITEA_USER }}:${{ secrets.GITEA_DST_TOKEN }}
-          DST_REGISTRY: ${{ inputs.dest-registry-host }}
-          DST_REPOSITORY: ${{ inputs.dest-repository }}
+          DST_REGISTRY: ${{ vars.GITEA_DST_REGISTRY_HOST }}
+          DST_REPOSITORY: ${{ vars.GITEA_DST_REPOSITORY }}
           DST_TOKEN_SET: ${{ secrets.GITEA_DST_TOKEN != '' }}
         run: >
           mkdir -p "$XDG_RUNTIME_DIR";
           if [ "$DST_TOKEN_SET" != "true" ]; then
           echo "::error::GITEA_DST_TOKEN ontbreekt"; exit 1; fi;
+          if [ -z "$DST_REGISTRY" ] || [ -z "$DST_REPOSITORY" ]; then
+          echo "::error::GITEA_DST_REGISTRY_HOST en
+          GITEA_DST_REPOSITORY moeten zijn ingesteld op environment
+          '$TARGET'"; exit 1; fi;
           DST="$DST_REGISTRY/$DST_REPOSITORY/$IMAGE_NAME:$VER";
           SRC_URL="docker://$REGISTRY/$REPOSITORY/$IMAGE_NAME@$SOURCE_DIGEST";
           DST_URL="docker://$DST";
@@ -182,7 +178,6 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-    environment: ${{ inputs.environment }}
     concurrency:
       group: promote-${{ inputs.project }}-${{ inputs.environment }}
       cancel-in-progress: true
