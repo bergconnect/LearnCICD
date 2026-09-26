@@ -10,11 +10,6 @@ name: CD dev template
 on:
   workflow_call:
     inputs:
-      repository:
-        description: 'Repository-namespace voor images'
-        required: false
-        default: 'beheerder'
-        type: string
       base-image:
         description: 'Runtime base-image voor dotnet publish'
         required: false
@@ -147,7 +142,7 @@ jobs:
       PROJECT: ${{ matrix.release.project }}
       IMAGE_NAME: ${{ matrix.release.image }}
       REGISTRY: ${{ vars.GITEA_LOCAL }}
-      REPOSITORY: ${{ inputs.repository }}
+      REPOSITORY: ${{ vars.GITEA_SOURCE_REPOSITORY }}
       BASE_IMAGE: ${{ inputs.base-image }}
     steps:
       - name: Set up .NET
@@ -208,7 +203,7 @@ jobs:
       PROJECT: ${{ matrix.release.project }}
       IMAGE_NAME: ${{ matrix.release.image }}
       REGISTRY: ${{ vars.GITEA_LOCAL }}
-      REPOSITORY: ${{ inputs.repository }}
+      REPOSITORY: ${{ vars.GITEA_SOURCE_REPOSITORY }}
       VER_MAP: ${{ needs.determine-version.outputs.versions }}
     steps:
       - name: Check out code

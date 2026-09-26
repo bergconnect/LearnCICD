@@ -25,6 +25,5 @@ jobs:
       contents: write
       pull-requests: write
     with:
-      repository: beheerder
       base-image: mcr.microsoft.com/dotnet/aspnet:10.0
     secrets: inherit
