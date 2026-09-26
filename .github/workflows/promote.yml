@@ -42,6 +42,5 @@ jobs:
       project: ${{ inputs.project }}
       version: ${{ inputs.version }}
       environment: ${{ inputs.environment }}
-      registry-host: ${{ vars.GITEA_LOCAL }}
       repository: beheerder
     secrets: inherit

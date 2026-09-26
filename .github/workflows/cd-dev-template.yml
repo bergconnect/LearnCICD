@@ -10,11 +10,6 @@ name: CD dev template
 on:
   workflow_call:
     inputs:
-      registry-host:
-        description: 'Registry-host voor image-referenties'
-        required: false
-        default: 'go.berg-connect.nl'
-        type: string
       repository:
         description: 'Repository-namespace voor images'
         required: false
@@ -137,6 +132,7 @@ jobs:
     name: Publish image
     runs-on: [self-hosted]
     needs: [detect, determine-version]
+    environment: dev
     if: >
       needs.detect.outputs.matrix != '' &&
       needs.detect.outputs.matrix != '[]'
@@ -150,7 +146,7 @@ jobs:
     env:
       PROJECT: ${{ matrix.release.project }}
       IMAGE_NAME: ${{ matrix.release.image }}
-      REGISTRY: ${{ inputs.registry-host }}
+      REGISTRY: ${{ vars.GITEA_LOCAL }}
       REPOSITORY: ${{ inputs.repository }}
       BASE_IMAGE: ${{ inputs.base-image }}
     steps:
@@ -194,6 +190,7 @@ jobs:
     name: Update image tag
     runs-on: [self-hosted]
     needs: [publish, detect, determine-version]
+    environment: dev
     if: >
       always() &&
       needs.detect.outputs.matrix != '' &&
@@ -210,7 +207,7 @@ jobs:
     env:
       PROJECT: ${{ matrix.release.project }}
       IMAGE_NAME: ${{ matrix.release.image }}
-      REGISTRY: ${{ inputs.registry-host }}
+      REGISTRY: ${{ vars.GITEA_LOCAL }}
       REPOSITORY: ${{ inputs.repository }}
       VER_MAP: ${{ needs.determine-version.outputs.versions }}
     steps:
