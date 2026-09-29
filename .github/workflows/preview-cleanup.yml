@@ -12,7 +12,6 @@ jobs:
     name: Delete preview branches
     runs-on: [self-hosted]
     timeout-minutes: 5
-    if: startsWith(github.head_ref, 'ci/') == false
     permissions:
       contents: write
     steps:
@@ -21,7 +20,7 @@ jobs:
           TOKEN: ${{ secrets.GH_PAT }}
           API: ${{ github.api_url }}
           REPO: ${{ github.repository }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_REF: ${{ github.head_ref }}
         run: >
           REFS=$(curl -s -H "Authorization: Bearer $TOKEN"
           "$API/repos/$REPO/git/matching-refs/heads/ci/preview-"
@@ -32,11 +31,11 @@ jobs:
           MSG=$(curl -s -H "Authorization: Bearer $TOKEN"
           "$API/repos/$REPO/git/commits/$SHA" | jq -r '.message // empty');
           case "$MSG" in
-          *"(PR #$PR_NUMBER)"*)
+          *"(branch: $HEAD_REF)"*)
           echo "Verwijder $REF";
           curl -s -o /dev/null -X DELETE
           -H "Authorization: Bearer $TOKEN"
           "$API/repos/$REPO/git/refs/${REF#refs/}";;
-          *) echo "Bewaar $REF (hoort niet bij PR #$PR_NUMBER)";;
+          *) echo "Bewaar $REF (hoort niet bij $HEAD_REF)";;
           esac;
           done

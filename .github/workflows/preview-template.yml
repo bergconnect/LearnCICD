@@ -3,9 +3,14 @@ name: Preview template
 on:
   workflow_call:
     inputs:
-      projects:
-        description: 'JSON-array met projecten om te previewen'
+      project:
+        description: 'Project-key uit .github/projects.json, of all'
         required: true
+        type: string
+      branch:
+        description: 'Te deployen branch (leeg = branch van de dispatch)'
+        required: false
+        default: ''
         type: string
     secrets:
       GH_PAT:
@@ -21,28 +26,62 @@ env:
 permissions: {}
 
 concurrency:
-  group: preview-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  group: preview-${{ github.workflow }}
+  cancel-in-progress: false
 
 jobs:
+  resolve:
+    name: Resolve branch and projects
+    runs-on: [self-hosted]
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      projects: ${{ steps.resolve.outputs.projects }}
+      branch: ${{ steps.resolve.outputs.branch }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch || github.ref_name }}
+
+      - name: Resolve branch and projects
+        id: resolve
+        env:
+          PROJECT: ${{ inputs.project }}
+          BRANCH: ${{ inputs.branch || github.ref_name }}
+        run: >
+          KEYS=$(jq -c '[keys[] | select(. != "_global")]'
+          .github/projects.json);
+          if [ "$PROJECT" = "all" ]; then LIST="$KEYS";
+          else echo "$KEYS" | jq -e --arg p "$PROJECT" 'index($p) != null'
+          > /dev/null ||
+          { echo "::error::Onbekend project '$PROJECT'"; exit 1; };
+          LIST=$(jq -cn --arg p "$PROJECT" '[$p]'); fi;
+          echo "projects=$LIST" >> "$GITHUB_OUTPUT";
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT";
+          echo "Preview van $BRANCH voor $LIST"
+
   preview:
     name: Preview to dev
     runs-on: [self-hosted]
+    needs: [resolve]
     environment: dev
     timeout-minutes: 20
     permissions:
       contents: write
-      pull-requests: write
     strategy:
       fail-fast: false
       matrix:
-        project: ${{ fromJSON(inputs.projects) }}
+        project: ${{ fromJSON(needs.resolve.outputs.projects) }}
     env:
       PROJECT: ${{ matrix.project }}
+      BRANCH: ${{ needs.resolve.outputs.branch }}
     steps:
       - name: Set up .NET
         uses: ./.github/actions/dotnet-setup
         with:
+          ref: ${{ needs.resolve.outputs.branch }}
           fetch-depth: 0
           token: ${{ secrets.GH_PAT }}
           restore-tools: 'true'
@@ -62,8 +101,8 @@ jobs:
           TAG=$(cd "src/$PROJECT" &&
           dotnet nbgv get-version -v SemVer2);
           [[ "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+-g[0-9a-f]+$ ]] ||
-          { echo "::error::onverwachte PR-versievorm: '$TAG'";
-          exit 1; };
+          { echo "::error::onverwachte preview-versievorm: '$TAG'
+          (main is geen preview-branch)"; exit 1; };
           echo "TAG=$TAG" >> "$GITHUB_ENV";
           echo "Preview tag $TAG for $PROJECT"
 
@@ -81,7 +120,7 @@ jobs:
           REGISTRY: ${{ vars.GITEA_LOCAL }}
           REPOSITORY: ${{ vars.GITEA_SOURCE_REPOSITORY }}
 
-      - name: Push PR tag with Skopeo
+      - name: Push preview tag with Skopeo
         run: >
           IMAGE="$REGISTRY/$REPOSITORY/$IMAGE_NAME";
           skopeo copy --dest-tls-verify=false
@@ -102,8 +141,7 @@ jobs:
           image-name: ${{ env.IMAGE_NAME }}
           branch: ci/preview-${{ env.PROJECT }}
           open-pr: 'false'
-          commit-message: "ci: preview ${{ env.PROJECT }} \
-            ${{ env.TAG }} to dev (PR #${{ github.event.pull_request.number }})"
+          commit-message: "ci: preview ${{ env.PROJECT }} ${{ env.TAG }} to dev (branch: ${{ env.BRANCH }})"
           token: ${{ secrets.GH_PAT }}
           gpg-key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
           key-id: ${{ vars.BOT_GPG_KEYID }}

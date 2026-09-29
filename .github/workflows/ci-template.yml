@@ -1,18 +1,7 @@
 name: CI template
-# Alleen verificatie (build, test, security). Preview naar dev staat in
-# preview-template.yml en draait pas nadat deze CI slaagt (zie ci.yml).
-# LESSEN (niet verwijderen bij refactor):
-# - run: > (NOOIT run: | met multi-line $(...): newline = scheiding, exit 127)
-# - Geen top-level concurrency op callers; inputs-defaults; matrix-guards.
-# - Composites erven geen secrets; export voor strenv(); yq -r; diff-guards.
-# - SDK-versiebron = global.json (enige bron; geen dotnet-version-inputs).
 
 on:
   workflow_call:
-    outputs:
-      projects:
-        description: 'JSON-array met geraakte projecten (voor de preview)'
-        value: ${{ jobs.changes.outputs.projects }}
 
 env:
   DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
