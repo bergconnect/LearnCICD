@@ -16,5 +16,3 @@ if (app.Environment.IsDevelopment())
 app.Run();
 
 public partial class Program { }
-
-// roundtrip-probe: Api dev->acc->prd
