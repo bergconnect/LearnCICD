@@ -153,6 +153,7 @@ jobs:
     if: >
       always() &&
       needs.verify.result == 'success' &&
+      startsWith(github.head_ref, 'ci/preview-') == false &&
       needs.changes.outputs.projects != '' &&
       needs.changes.outputs.projects != '[]'
     timeout-minutes: 20
