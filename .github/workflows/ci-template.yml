@@ -7,6 +7,13 @@ name: CI template
 
 on:
   workflow_call:
+    secrets:
+      GH_PAT:
+        required: true
+      GITEA_TOKEN:
+        required: true
+      BOT_GPG_PRIVATE_KEY:
+        required: true
 
 env:
   DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
@@ -142,6 +149,7 @@ jobs:
     name: Preview to dev
     runs-on: [self-hosted]
     needs: [changes, verify-project, verify]
+    environment: dev
     if: >
       always() &&
       needs.verify.result == 'success' &&
