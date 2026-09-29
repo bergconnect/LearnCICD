@@ -15,4 +15,6 @@ jobs:
   ci:
     uses: ./.github/workflows/ci-template.yml
     permissions:
-      contents: read
+      contents: write
+      pull-requests: write
+    secrets: inherit
