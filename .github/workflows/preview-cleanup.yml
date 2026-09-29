@@ -23,15 +23,20 @@ jobs:
           REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: >
-          LIST=$(curl -s -H "Authorization: Bearer $TOKEN"
+          REFS=$(curl -s -H "Authorization: Bearer $TOKEN"
           "$API/repos/$REPO/git/matching-refs/heads/ci/preview-"
-          | jq -r --arg re "^refs/heads/ci/preview-.+-pr-${PR_NUMBER}\$"
-          '.[] | .ref | select(test($re)) | ltrimstr("refs/")');
-          if [ -z "$LIST" ]; then
+          | jq -r '.[] | "\(.ref) \(.object.sha)"');
+          if [ -z "$REFS" ]; then
           echo "Geen preview-branches om op te ruimen"; exit 0; fi;
-          echo "$LIST" | while read -r REF; do
+          echo "$REFS" | while read -r REF SHA; do
+          MSG=$(curl -s -H "Authorization: Bearer $TOKEN"
+          "$API/repos/$REPO/git/commits/$SHA" | jq -r '.message // empty');
+          case "$MSG" in
+          *"(PR #$PR_NUMBER)"*)
           echo "Verwijder $REF";
           curl -s -o /dev/null -X DELETE
           -H "Authorization: Bearer $TOKEN"
-          "$API/repos/$REPO/git/refs/$REF";
+          "$API/repos/$REPO/git/refs/${REF#refs/}";;
+          *) echo "Bewaar $REF (hoort niet bij PR #$PR_NUMBER)";;
+          esac;
           done
