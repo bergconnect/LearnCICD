@@ -1,4 +1,4 @@
 service:
   port: 8080
 image:
-  tag: "0.2.28-gd3189de740"
+  tag: "0.2.29-g8efd5c09ca"
