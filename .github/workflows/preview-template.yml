@@ -100,10 +100,10 @@ jobs:
           env-name: dev
           version: ${{ env.TAG }}
           image-name: ${{ env.IMAGE_NAME }}
-          branch: ci/preview-${{ env.PROJECT }}-pr-${{ github.event.pull_request.number }}
+          branch: ci/preview-${{ env.PROJECT }}
           open-pr: 'false'
           commit-message: "ci: preview ${{ env.PROJECT }} \
-            ${{ env.TAG }} to dev"
+            ${{ env.TAG }} to dev (PR #${{ github.event.pull_request.number }})"
           token: ${{ secrets.GH_PAT }}
           gpg-key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
           key-id: ${{ vars.BOT_GPG_KEYID }}
