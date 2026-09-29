@@ -2,17 +2,46 @@
   "Api": {
     "image_name": "learncicd-api",
     "chart": "learncicd",
-    "paths": ["src/Api/**"],
-    "test-paths": ["tests/Api.Tests/**"]
+    "paths": [
+      "src/Api/**"
+    ],
+    "test-paths": [
+      "tests/Api.Tests/**"
+    ]
   },
   "Worker": {
     "image_name": "learncicd-worker",
     "chart": "learncicd-worker",
-    "paths": ["src/Worker/**", "src/Shared/**"],
-    "test-paths": ["tests/Worker.Tests/**"]
+    "paths": [
+      "src/Worker/**",
+      "src/Shared/**"
+    ],
+    "test-paths": [
+      "tests/Worker.Tests/**"
+    ]
   },
   "_global": {
-    "select-all": ["global.json", "version.json", "*.sln", "Directory.*", ".github/workflows/ci.yml", ".github/workflows/ci-template.yml", ".github/workflows/cd.yml", ".github/workflows/cd-dev-template.yml", ".github/workflows/promote.yml", ".github/workflows/promote-template.yml"],
-    "ignore": [".infra/**", "argocd/**", "docs/**", "**/*.md", ".gitignore", "LICENSE"]
+    "select-all": [
+      "global.json",
+      "version.json",
+      "*.sln",
+      "Directory.*",
+      ".github/workflows/ci.yml",
+      ".github/workflows/ci-template.yml",
+      ".github/workflows/cd.yml",
+      ".github/workflows/cd-dev-template.yml",
+      ".github/workflows/promote.yml",
+      ".github/workflows/promote-template.yml",
+      ".github/actions/**",
+      ".github/projects.json"
+    ],
+    "ignore": [
+      ".infra/**",
+      "argocd/**",
+      "docs/**",
+      "**/*.md",
+      ".gitignore",
+      "LICENSE"
+    ]
   }
 }
