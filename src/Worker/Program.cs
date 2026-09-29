@@ -1,3 +1,4 @@
+// probe: ci-pr-dev-bump preview-cycle proof
 using Shared;
 
 var builder = WebApplication.CreateBuilder(args);
