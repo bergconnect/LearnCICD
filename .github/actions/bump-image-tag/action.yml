@@ -1,8 +1,5 @@
 name: 'Bump image tag'
-# LESSEN (niet verwijderen bij refactor):
-# - run: > (NOOIT run: | met multi-line $(...): newline = scheiding, exit 127)
-# - Geen top-level concurrency op callers; inputs-defaults; matrix-guards.
-# - Composites erven geen secrets; export voor strenv(); yq -r; diff-guards.
+
 description: >
   Bumpt image.tag in .infra/<chart>/values_dev.yaml of values_prd.yaml
   naar een versie,
@@ -49,6 +46,13 @@ inputs:
     description: 'Auto-merge op bump-PR (default aan; preview uit)'
     required: false
     default: 'true'
+  base-ref:
+    description: >
+      Branch waarop de bump gebaseerd wordt (bv. main). Leeg = huidige
+      checkout. Verplicht voor PR-events: daar is HEAD de merge-commit
+      en zou de bump-PR de hele feature-diff meenemen.
+    required: false
+    default: ''
 
 outputs:
   changed:
@@ -71,7 +75,11 @@ runs:
         PROJECT: ${{ inputs.project }}
         ENV_NAME: ${{ inputs.env-name }}
         VERSION: ${{ inputs.version }}
+        BASE_REF: ${{ inputs.base-ref }}
       run: >
+        if [ -n "$BASE_REF" ]; then
+        git fetch origin "$BASE_REF" &&
+        git checkout -f -B "bump-base" "origin/$BASE_REF"; fi;
         CHART=$(jq -r --arg p "$PROJECT"
         '.[$p].chart // empty' .github/projects.json);
         if [ -z "$CHART" ]; then

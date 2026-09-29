@@ -1,9 +1,4 @@
 name: CI template
-# LESSEN (niet verwijderen bij refactor):
-# - run: > (NOOIT run: | met multi-line $(...): newline = scheiding, exit 127)
-# - Geen top-level concurrency op callers; inputs-defaults; matrix-guards.
-# - Composites erven geen secrets; export voor strenv(); yq -r; diff-guards.
-# - SDK-versiebron = global.json (enige bron; geen dotnet-version-inputs).
 
 on:
   workflow_call:
@@ -66,7 +61,7 @@ jobs:
           echo "Projectversies uniek"
 
   verify-project:
-    name: Verify
+    name: Verify (project)
     runs-on: [self-hosted]
     timeout-minutes: 20
     permissions:
@@ -97,7 +92,7 @@ jobs:
 
       - name: Test with coverage
         run: >
-          dotnet test "tests/$PROJECT.Tests/$PROJECT.Tests.csproj"
+          dotnet test --project "tests/$PROJECT.Tests/$PROJECT.Tests.csproj"
           -c Release --coverage --coverage-output-format cobertura
 
       - name: Upload coverage report
@@ -128,7 +123,7 @@ jobs:
           package --deprecated
 
   verify:
-    name: Verify
+    name: CI gate
     runs-on: [self-hosted]
     timeout-minutes: 5
     permissions:
@@ -211,14 +206,14 @@ jobs:
       - name: Push PR tag with Skopeo
         run: >
           IMAGE="$REGISTRY/$REPOSITORY/$IMAGE_NAME";
-          skopeo copy --tls-verify=false
-          --dest-username ${{ vars.GITEA_USER }}
-          --dest-password ${{ secrets.GITEA_TOKEN }}
+          skopeo copy --dest-tls-verify=false
+          --dest-creds "$DST_CREDS"
           docker-archive:/tmp/image-$PROJECT-pr.tar:$IMAGE:$TAG
           docker://$IMAGE:$TAG
         env:
           REGISTRY: ${{ vars.GITEA_LOCAL }}
           REPOSITORY: ${{ vars.GITEA_SOURCE_REPOSITORY }}
+          DST_CREDS: ${{ vars.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}
 
       - name: Bump dev tag via composite
         uses: ./.github/actions/bump-image-tag
@@ -227,7 +222,8 @@ jobs:
           env-name: dev
           version: ${{ env.TAG }}
           image-name: ${{ env.IMAGE_NAME }}
-          branch: ci/preview-${{ env.PROJECT }}-${{ env.TAG }}
+          branch: ci/preview-${{ env.PROJECT }}-pr-${{ github.event.pull_request.number }}
+          base-ref: main
           commit-message: "ci: preview ${{ env.PROJECT }} \
             ${{ env.TAG }} to dev"
           pr-title: "ci: preview ${{ env.PROJECT }} \
