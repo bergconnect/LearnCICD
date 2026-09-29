@@ -27,8 +27,9 @@ inputs:
     description: 'Commit-message voor de bump'
     required: true
   pr-title:
-    description: 'PR-titel'
-    required: true
+    description: 'PR-titel (alleen nodig als open-pr=true)'
+    required: false
+    default: ''
   pr-body:
     description: 'PR-body'
     required: false
@@ -44,6 +45,12 @@ inputs:
     required: true
   auto-merge:
     description: 'Auto-merge op bump-PR (default aan; preview uit)'
+    required: false
+    default: 'true'
+  open-pr:
+    description: >
+      'true' opent een PR naar main (CD/promote). 'false' pusht alleen de
+      branch (preview: ArgoCD wijst handmatig naar die branch).
     required: false
     default: 'true'
   base-ref:
@@ -149,7 +156,7 @@ runs:
 
     - name: Open PR
       id: open_pr
-      if: steps.commit.outputs.pushed == 'true'
+      if: steps.commit.outputs.pushed == 'true' && inputs.open-pr == 'true'
       shell: bash
       env:
         TOKEN: ${{ inputs.token }}
@@ -182,7 +189,9 @@ runs:
         echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
     - name: Enable auto-merge
-      if: steps.commit.outputs.pushed == 'true' && inputs.auto-merge == 'true'
+      if: >
+        steps.commit.outputs.pushed == 'true' &&
+        inputs.open-pr == 'true' && inputs.auto-merge == 'true'
       shell: bash
       env:
         TOKEN: ${{ inputs.token }}
@@ -212,7 +221,7 @@ runs:
         exit 1; fi
 
     - name: Update PR branch if behind
-      if: steps.commit.outputs.pushed == 'true'
+      if: steps.commit.outputs.pushed == 'true' && inputs.open-pr == 'true'
       shell: bash
       env:
         TOKEN: ${{ inputs.token }}

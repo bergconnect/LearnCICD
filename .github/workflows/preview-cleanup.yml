@@ -1,0 +1,37 @@
+name: Preview cleanup
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  cleanup:
+    name: Delete preview branches
+    runs-on: [self-hosted]
+    timeout-minutes: 5
+    if: startsWith(github.head_ref, 'ci/') == false
+    permissions:
+      contents: write
+    steps:
+      - name: Delete preview branches of this PR
+        env:
+          TOKEN: ${{ secrets.GH_PAT }}
+          API: ${{ github.api_url }}
+          REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: >
+          LIST=$(curl -s -H "Authorization: Bearer $TOKEN"
+          "$API/repos/$REPO/git/matching-refs/heads/ci/preview-"
+          | jq -r --arg re "^refs/heads/ci/preview-.+-pr-${PR_NUMBER}\$"
+          '.[] | .ref | select(test($re)) | ltrimstr("refs/")');
+          if [ -z "$LIST" ]; then
+          echo "Geen preview-branches om op te ruimen"; exit 0; fi;
+          echo "$LIST" | while read -r REF; do
+          echo "Verwijder $REF";
+          curl -s -o /dev/null -X DELETE
+          -H "Authorization: Bearer $TOKEN"
+          "$API/repos/$REPO/git/refs/$REF";
+          done

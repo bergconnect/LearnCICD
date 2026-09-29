@@ -1,10 +1,4 @@
 name: Preview template
-# LESSEN (niet verwijderen bij refactor):
-# - run: > (NOOIT run: | met multi-line $(...): newline = scheiding, exit 127)
-# - Geen top-level concurrency op callers; inputs-defaults; matrix-guards.
-# - Composites erven geen secrets; export voor strenv(); yq -r; diff-guards.
-# - SDK-versiebron = global.json (enige bron; geen dotnet-version-inputs).
-# - Aangeroepen vanuit ci.yml, uitsluitend nadat de CI-gate geslaagd is.
 
 on:
   workflow_call:
@@ -107,14 +101,9 @@ jobs:
           version: ${{ env.TAG }}
           image-name: ${{ env.IMAGE_NAME }}
           branch: ci/preview-${{ env.PROJECT }}-pr-${{ github.event.pull_request.number }}
-          base-ref: main
+          open-pr: 'false'
           commit-message: "ci: preview ${{ env.PROJECT }} \
             ${{ env.TAG }} to dev"
-          pr-title: "ci: preview ${{ env.PROJECT }} \
-            ${{ env.TAG }} to dev"
-          pr-body: Automated PR preview of validated image
-            ${{ env.TAG }} to dev.
           token: ${{ secrets.GH_PAT }}
           gpg-key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
           key-id: ${{ vars.BOT_GPG_KEYID }}
-          auto-merge: 'false'
