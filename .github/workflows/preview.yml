@@ -1,0 +1,34 @@
+name: Preview
+
+run-name: >-
+  Preview ${{ inputs.project }} van ${{ inputs.branch || github.ref_name }}
+  naar dev
+
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: >
+          Project-key uit .github/projects.json, of all voor alle projecten
+        required: true
+        default: 'all'
+        type: string
+      branch:
+        description: >
+          Branch om te deployen (leeg = de branch gekozen bij
+          "Use workflow from")
+        required: false
+        default: ''
+        type: string
+
+permissions: {}
+
+jobs:
+  preview:
+    uses: ./.github/workflows/preview-template.yml
+    permissions:
+      contents: write
+    with:
+      project: ${{ inputs.project }}
+      branch: ${{ inputs.branch }}
+    secrets: inherit

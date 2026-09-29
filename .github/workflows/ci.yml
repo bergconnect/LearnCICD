@@ -6,28 +6,9 @@ on:
 
 permissions: {}
 
-# NOTE: no concurrency block here on purpose. A top-level concurrency
-# block on a caller workflow prevents GitHub from expanding reusable
-# workflow jobs (run fails instantly with 0 jobs, no error surfaced).
-# The templates keep their own concurrency block (proven harmless).
 
 jobs:
   ci:
     uses: ./.github/workflows/ci-template.yml
     permissions:
       contents: read
-
-  preview:
-    needs: [ci]
-    if: >
-      needs.ci.result == 'success' &&
-      needs.ci.outputs.projects != '' &&
-      needs.ci.outputs.projects != '[]' &&
-      startsWith(github.head_ref, 'ci/preview-') == false
-    uses: ./.github/workflows/preview-template.yml
-    permissions:
-      contents: write
-      pull-requests: write
-    with:
-      projects: ${{ needs.ci.outputs.projects }}
-    secrets: inherit
