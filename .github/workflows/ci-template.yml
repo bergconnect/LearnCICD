@@ -197,8 +197,10 @@ jobs:
           [[ "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
           { echo "::error::geen schone base-versie: '$VER'";
           exit 1; };
-          echo "VER=$VER" >> "$GITHUB_ENV";
-          echo "Base version $VER for $PROJECT"
+          TAG="$VER-pr${{ github.event.pull_request.number }}";
+          TAG="$TAG.${{ github.run_number }}";
+          echo "TAG=$TAG" >> "$GITHUB_ENV";
+          echo "Preview tag $TAG for $PROJECT (base $VER)"
 
       - name: Build image archive with dotnet publish
         run: >
@@ -207,21 +209,21 @@ jobs:
           -c Release
           -p:ContainerBaseImage=mcr.microsoft.com/dotnet/aspnet:10.0
           -p:ContainerRepository=$REGISTRY/$REPOSITORY/$IMAGE_NAME
-          -p:ContainerImageTag=$VER
+          -p:ContainerImageTag=$TAG
           /t:PublishContainer
           -p:ContainerArchiveOutputPath=/tmp/image-$PROJECT-pr.tar
         env:
           REGISTRY: ${{ vars.GITEA_LOCAL }}
           REPOSITORY: ${{ vars.GITEA_SOURCE_REPOSITORY }}
 
-      - name: Push base tag with Skopeo
+      - name: Push PR tag with Skopeo
         run: >
           IMAGE="$REGISTRY/$REPOSITORY/$IMAGE_NAME";
           skopeo copy --tls-verify=false
           --dest-username ${{ vars.GITEA_USER }}
           --dest-password ${{ secrets.GITEA_TOKEN }}
-          docker-archive:/tmp/image-$PROJECT-pr.tar:$IMAGE:$VER
-          docker://$IMAGE:$VER
+          docker-archive:/tmp/image-$PROJECT-pr.tar:$IMAGE:$TAG
+          docker://$IMAGE:$TAG
         env:
           REGISTRY: ${{ vars.GITEA_LOCAL }}
           REPOSITORY: ${{ vars.GITEA_SOURCE_REPOSITORY }}
@@ -231,15 +233,15 @@ jobs:
         with:
           project: ${{ env.PROJECT }}
           env-name: dev
-          version: ${{ env.VER }}
+          version: ${{ env.TAG }}
           image-name: ${{ env.IMAGE_NAME }}
-          branch: ci/preview-${{ env.PROJECT }}-${{ env.VER }}
+          branch: ci/preview-${{ env.PROJECT }}-${{ env.TAG }}
           commit-message: "ci: preview ${{ env.PROJECT }} \
-            ${{ env.VER }} to dev"
+            ${{ env.TAG }} to dev"
           pr-title: "ci: preview ${{ env.PROJECT }} \
-            ${{ env.VER }} to dev"
+            ${{ env.TAG }} to dev"
           pr-body: Automated PR preview of validated image
-            ${{ env.VER }} to dev.
+            ${{ env.TAG }} to dev.
           token: ${{ secrets.GH_PAT }}
           gpg-key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
           key-id: ${{ vars.BOT_GPG_KEYID }}
