@@ -183,24 +183,15 @@ jobs:
           .github/projects.json"; exit 1; };
           echo "IMAGE_NAME=$IMAGE" >> "$GITHUB_ENV"
 
-      - name: Base version from origin/main
+      - name: Version from feature branch
         run: >
-          git fetch origin main:refs/remotes/origin/main;
-          rm -rf /tmp/nbgvmain;
-          git worktree add /tmp/nbgvmain origin/main;
-          VER=$(dotnet nbgv get-version -v SemVer2
-          --project /tmp/nbgvmain/src/$PROJECT 2>/dev/null ||
-          (cd /tmp/nbgvmain/src/$PROJECT &&
-          dotnet nbgv get-version -v SemVer2));
-          git worktree remove --force /tmp/nbgvmain;
-          VER=$(echo "$VER" | cut -d'-' -f1 | cut -d'+' -f1);
-          [[ "$VER" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] ||
-          { echo "::error::geen schone base-versie: '$VER'";
+          TAG=$(cd "src/$PROJECT" &&
+          dotnet nbgv get-version -v SemVer2);
+          [[ "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+-g[0-9a-f]+$ ]] ||
+          { echo "::error::onverwachte PR-versievorm: '$TAG'";
           exit 1; };
-          TAG="$VER-pr${{ github.event.pull_request.number }}";
-          TAG="$TAG.${{ github.run_number }}";
           echo "TAG=$TAG" >> "$GITHUB_ENV";
-          echo "Preview tag $TAG for $PROJECT (base $VER)"
+          echo "Preview tag $TAG for $PROJECT"
 
       - name: Build image archive with dotnet publish
         run: >
