@@ -46,7 +46,7 @@ inputs:
     description: 'Fingerprint voor user.signingkey (expliciet, geen afleiding)'
     required: true
   auto-merge:
-    description: 'Auto-merge inschakelen op de bump-PR (default true; preview zet uit)'
+    description: 'Auto-merge op bump-PR (default aan; preview uit)'
     required: false
     default: 'true'
 
