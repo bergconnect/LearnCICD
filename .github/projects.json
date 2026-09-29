@@ -32,6 +32,7 @@
       ".github/workflows/cd-dev-template.yml",
       ".github/workflows/promote.yml",
       ".github/workflows/promote-template.yml",
+      ".github/workflows/preview-template.yml",
       ".github/actions/**",
       ".github/projects.json"
     ],

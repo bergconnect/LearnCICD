@@ -1,0 +1,120 @@
+name: Preview template
+# LESSEN (niet verwijderen bij refactor):
+# - run: > (NOOIT run: | met multi-line $(...): newline = scheiding, exit 127)
+# - Geen top-level concurrency op callers; inputs-defaults; matrix-guards.
+# - Composites erven geen secrets; export voor strenv(); yq -r; diff-guards.
+# - SDK-versiebron = global.json (enige bron; geen dotnet-version-inputs).
+# - Aangeroepen vanuit ci.yml, uitsluitend nadat de CI-gate geslaagd is.
+
+on:
+  workflow_call:
+    inputs:
+      projects:
+        description: 'JSON-array met projecten om te previewen'
+        required: true
+        type: string
+    secrets:
+      GH_PAT:
+        required: true
+      GITEA_TOKEN:
+        required: true
+      BOT_GPG_PRIVATE_KEY:
+        required: true
+
+env:
+  DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
+
+permissions: {}
+
+concurrency:
+  group: preview-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    name: Preview to dev
+    runs-on: [self-hosted]
+    environment: dev
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        project: ${{ fromJSON(inputs.projects) }}
+    env:
+      PROJECT: ${{ matrix.project }}
+    steps:
+      - name: Set up .NET
+        uses: ./.github/actions/dotnet-setup
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+          restore-tools: 'true'
+
+      - name: Map project to image
+        run: >
+          IMAGE=$(jq -r --arg p "$PROJECT"
+          '.[$p].image_name // empty'
+          .github/projects.json);
+          [ -n "$IMAGE" ] ||
+          { echo "::error::$PROJECT ontbreekt in
+          .github/projects.json"; exit 1; };
+          echo "IMAGE_NAME=$IMAGE" >> "$GITHUB_ENV"
+
+      - name: Version from feature branch
+        run: >
+          TAG=$(cd "src/$PROJECT" &&
+          dotnet nbgv get-version -v SemVer2);
+          [[ "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+-g[0-9a-f]+$ ]] ||
+          { echo "::error::onverwachte PR-versievorm: '$TAG'";
+          exit 1; };
+          echo "TAG=$TAG" >> "$GITHUB_ENV";
+          echo "Preview tag $TAG for $PROJECT"
+
+      - name: Build image archive with dotnet publish
+        run: >
+          dotnet publish "src/$PROJECT/$PROJECT.csproj"
+          --os linux --arch x64
+          -c Release
+          -p:ContainerBaseImage=mcr.microsoft.com/dotnet/aspnet:10.0
+          -p:ContainerRepository=$REGISTRY/$REPOSITORY/$IMAGE_NAME
+          -p:ContainerImageTag=$TAG
+          /t:PublishContainer
+          -p:ContainerArchiveOutputPath=/tmp/image-$PROJECT-pr.tar
+        env:
+          REGISTRY: ${{ vars.GITEA_LOCAL }}
+          REPOSITORY: ${{ vars.GITEA_SOURCE_REPOSITORY }}
+
+      - name: Push PR tag with Skopeo
+        run: >
+          IMAGE="$REGISTRY/$REPOSITORY/$IMAGE_NAME";
+          skopeo copy --dest-tls-verify=false
+          --dest-creds "$DST_CREDS"
+          docker-archive:/tmp/image-$PROJECT-pr.tar:$IMAGE:$TAG
+          docker://$IMAGE:$TAG
+        env:
+          REGISTRY: ${{ vars.GITEA_LOCAL }}
+          REPOSITORY: ${{ vars.GITEA_SOURCE_REPOSITORY }}
+          DST_CREDS: ${{ vars.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}
+
+      - name: Bump dev tag via composite
+        uses: ./.github/actions/bump-image-tag
+        with:
+          project: ${{ env.PROJECT }}
+          env-name: dev
+          version: ${{ env.TAG }}
+          image-name: ${{ env.IMAGE_NAME }}
+          branch: ci/preview-${{ env.PROJECT }}-pr-${{ github.event.pull_request.number }}
+          base-ref: main
+          commit-message: "ci: preview ${{ env.PROJECT }} \
+            ${{ env.TAG }} to dev"
+          pr-title: "ci: preview ${{ env.PROJECT }} \
+            ${{ env.TAG }} to dev"
+          pr-body: Automated PR preview of validated image
+            ${{ env.TAG }} to dev.
+          token: ${{ secrets.GH_PAT }}
+          gpg-key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
+          key-id: ${{ vars.BOT_GPG_KEYID }}
+          auto-merge: 'false'
