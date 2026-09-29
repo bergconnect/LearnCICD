@@ -7,6 +7,13 @@ name: CI template
 
 on:
   workflow_call:
+    secrets:
+      GH_PAT:
+        required: true
+      GITEA_TOKEN:
+        required: true
+      KUBECONFIG:
+        required: true
 
 env:
   DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
@@ -137,3 +144,101 @@ jobs:
           do case "$r" in success|skipped) :;;
           *) echo "::error::Unsatisfied result: $r"; exit 1;; esac;
           done
+
+  preview:
+    name: Preview to dev
+    runs-on: [self-hosted]
+    needs: [changes, verify-project, verify]
+    if: >
+      always() &&
+      needs.verify.result == 'success' &&
+      needs.changes.outputs.projects != '' &&
+      needs.changes.outputs.projects != '[]'
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        project: ${{ fromJSON(needs.changes.outputs.projects) }}
+    env:
+      PROJECT: ${{ matrix.project }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      REGISTRY: ${{ vars.GITEA_LOCAL }}
+      REPOSITORY: ${{ vars.GITEA_SOURCE_REPOSITORY }}
+      BASE_IMAGE: mcr.microsoft.com/dotnet/aspnet:10.0
+    steps:
+      - name: Set up .NET
+        uses: ./.github/actions/dotnet-setup
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GH_PAT }}
+          restore-tools: 'true'
+
+      - name: Resolve image and chart
+        run: >
+          IMAGE=$(jq -r --arg p "$PROJECT"
+          '.[$p].image_name // empty' .github/projects.json);
+          CHART=$(jq -r --arg p "$PROJECT"
+          '.[$p].chart // empty' .github/projects.json);
+          [ -n "$IMAGE" ] ||
+          { echo "::error::$PROJECT mist image_name"; exit 1; };
+          [ -n "$CHART" ] ||
+          { echo "::error::$PROJECT mist chart"; exit 1; };
+          echo "IMAGE_NAME=$IMAGE" >> "$GITHUB_ENV";
+          echo "CHART=$CHART" >> "$GITHUB_ENV"
+
+      - name: Build PR-tag
+        run: >
+          BASE=$(cd "src/$PROJECT" &&
+          dotnet nbgv get-version -v SemVer2 |
+          cut -d'-' -f1 | cut -d'+' -f1);
+          TAG="$BASE-pr$PR_NUMBER.$GITHUB_RUN_NUMBER";
+          echo "TAG=$TAG" >> "$GITHUB_ENV";
+          dotnet publish "src/$PROJECT/$PROJECT.csproj"
+          --os linux --arch x64
+          -c Release
+          -p:ContainerBaseImage=$BASE_IMAGE
+          -p:ContainerRepository=$REGISTRY/$REPOSITORY/$IMAGE_NAME
+          -p:ContainerImageTag=$TAG
+          /t:PublishContainer
+          -p:ContainerArchiveOutputPath=/tmp/image-$PROJECT-pr.tar
+
+      - name: Push PR-tag
+        run: >
+          IMAGE="$REGISTRY/$REPOSITORY/$IMAGE_NAME";
+          skopeo copy --tls-verify=false
+          --dest-username ${{ vars.GITEA_USER }}
+          --dest-password ${{ secrets.GITEA_TOKEN }}
+          docker-archive:/tmp/image-$PROJECT-pr.tar:$IMAGE:$TAG
+          docker://$IMAGE:$TAG
+
+      - name: Kubeconfig schrijven
+        env:
+          KUBECONFIG_DATA: ${{ secrets.KUBECONFIG }}
+        run: >
+          printf '%s' "$KUBECONFIG_DATA" >
+          "$RUNNER_TEMP/kubeconfig-preview" &&
+          chmod 600 "$RUNNER_TEMP/kubeconfig-preview" &&
+          echo "KUBECONFIG=$RUNNER_TEMP/kubeconfig-preview" >>
+          "$GITHUB_ENV"
+
+      - name: Patch dev-Deployment
+        run: >
+          DEP=$(kubectl -n dev get deploy -l
+          app.kubernetes.io/name=$CHART
+          -o jsonpath='{.items[0].metadata.name}');
+          [ -n "$DEP" ] ||
+          { echo "::error::geen dev-Deployment voor $PROJECT";
+          exit 1; };
+          CTR=$(kubectl -n dev get deploy "$DEP"
+          -o jsonpath='{.spec.template.spec.containers[0].name}');
+          IMG=$(kubectl -n dev get deploy "$DEP"
+          -o jsonpath='{.spec.template.spec.containers[0].image}');
+          case "$IMG" in *"/$IMAGE_NAME:"*)
+          :;; *) echo "::error::$DEP draait $IMG, geen
+          $IMAGE_NAME"; exit 1;; esac;
+          kubectl -n dev set image "deployment/$DEP"
+          "$CTR=$REGISTRY/$REPOSITORY/$IMAGE_NAME:$TAG" &&
+          kubectl -n dev rollout status "deployment/$DEP"
+          --timeout=180s
