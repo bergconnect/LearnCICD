@@ -45,6 +45,10 @@ inputs:
   key-id:
     description: 'Fingerprint voor user.signingkey (expliciet, geen afleiding)'
     required: true
+  auto-merge:
+    description: 'Auto-merge op bump-PR (default aan; preview uit)'
+    required: false
+    default: 'true'
 
 outputs:
   changed:
@@ -170,7 +174,7 @@ runs:
         echo "pr_number=$PR_NUMBER" >> "$GITHUB_OUTPUT"
 
     - name: Enable auto-merge
-      if: steps.commit.outputs.pushed == 'true'
+      if: steps.commit.outputs.pushed == 'true' && inputs.auto-merge == 'true'
       shell: bash
       env:
         TOKEN: ${{ inputs.token }}
