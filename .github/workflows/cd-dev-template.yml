@@ -1,11 +1,4 @@
 name: CD dev template
-# LESSEN (niet verwijderen bij refactor):
-# - run: > (NOOIT run: | met multi-line $(...): newline = scheiding, exit 127)
-# - Geen top-level concurrency op callers; inputs-defaults; matrix-guards.
-# - Composites erven geen secrets; export voor strenv(); yq -r; diff-guards.
-# - SDK-versiebron = global.json (enige bron; geen dotnet-version-inputs).
-# - Push-only: geen dispatch-inputs, geen auto-environments, geen prd-job.
-#   Promotie naar prd loopt uitsluitend via promote-template.yml.
 
 on:
   workflow_call:
@@ -175,11 +168,12 @@ jobs:
       - name: Push version tag with Skopeo
         run: >
           IMAGE="$REGISTRY/$REPOSITORY/$IMAGE_NAME";
-          skopeo copy --tls-verify=false
-          --dest-username ${{ vars.GITEA_USER }}
-          --dest-password ${{ secrets.GITEA_TOKEN }}
+          skopeo copy --dest-tls-verify=false
+          --dest-creds "$DST_CREDS"
           docker-archive:/tmp/image-$PROJECT.tar:$IMAGE:$VER
           docker://$IMAGE:$VER
+        env:
+          DST_CREDS: ${{ vars.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}
 
   update-tag:
     name: Update image tag
@@ -226,10 +220,12 @@ jobs:
         run: >
           IMAGE="$REGISTRY/$REPOSITORY/$IMAGE_NAME";
           skopeo inspect --tls-verify=false --raw
-          --creds "${{ vars.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}"
+          --creds "$CREDS"
           docker://$IMAGE:$VER > /dev/null 2>&1
           && echo "proceed=true" >> "$GITHUB_OUTPUT"
           || echo "proceed=false" >> "$GITHUB_OUTPUT"
+        env:
+          CREDS: ${{ vars.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}
 
       - name: Bump dev tag via composite
         id: promote
