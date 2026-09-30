@@ -20,7 +20,7 @@ permissions: {}
 
 jobs:
   cd:
-    uses: ./.github/workflows/cd-dev-template.yml
+    uses: ./.github/workflows/cd-template.yml
     permissions:
       contents: write
       pull-requests: write

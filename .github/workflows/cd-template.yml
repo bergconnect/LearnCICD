@@ -246,3 +246,197 @@ jobs:
           token: ${{ secrets.GH_PAT }}
           gpg-key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
           key-id: ${{ vars.BOT_GPG_KEYID }}
+
+  promote-acc:
+    name: Promote to acc
+    runs-on: [self-hosted]
+    needs: [publish, detect, determine-version, update-tag]
+    environment: acc
+    if: >
+      always() &&
+      needs.update-tag.result == 'success' &&
+      needs.detect.outputs.matrix != '' &&
+      needs.detect.outputs.matrix != '[]' &&
+      needs.determine-version.result == 'success'
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ${{ fromJSON(needs.detect.outputs.matrix) }}
+    env:
+      PROJECT: ${{ matrix.release.project }}
+      IMAGE_NAME: ${{ matrix.release.image }}
+      REGISTRY: ${{ vars.GITEA_LOCAL }}
+      REPOSITORY: ${{ vars.GITEA_SOURCE_REPOSITORY }}
+      VER_MAP: ${{ needs.determine-version.outputs.versions }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+          fetch-depth: 0
+
+      - name: Set version
+        run: >
+          VER=$(echo "$VER_MAP" | jq -r --arg p "$PROJECT"
+          '.[$p] // empty');
+          echo "VER=$VER" >> "$GITHUB_ENV";
+          echo "Version $VER for $PROJECT";
+          [ -n "$VER" ] ||
+          { echo "::error::Lege versie voor $PROJECT"; exit 1; }
+
+      - name: Check published image exists
+        id: gate
+        run: >
+          IMAGE="$REGISTRY/$REPOSITORY/$IMAGE_NAME";
+          skopeo inspect --tls-verify=false --raw
+          --creds "$CREDS"
+          docker://$IMAGE:$VER > /dev/null 2>&1
+          && echo "proceed=true" >> "$GITHUB_OUTPUT"
+          || echo "proceed=false" >> "$GITHUB_OUTPUT"
+        env:
+          CREDS: ${{ vars.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}
+
+      - name: Copy image to acc registry
+        if: steps.gate.outputs.proceed == 'true'
+        env:
+          XDG_RUNTIME_DIR: ${{ runner.temp }}/runtime
+          SRC_CREDS: ${{ vars.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}
+          DST_CREDS: ${{ vars.GITEA_USER }}:${{ secrets.GITEA_DST_TOKEN }}
+          DST_REGISTRY: ${{ vars.GITEA_DST_REGISTRY_HOST }}
+          DST_REPOSITORY: ${{ vars.GITEA_DST_REPOSITORY }}
+          DST_TOKEN_SET: ${{ secrets.GITEA_DST_TOKEN != '' }}
+        run: >
+          mkdir -p "$XDG_RUNTIME_DIR";
+          if [ "$DST_TOKEN_SET" != "true" ]; then
+          echo "::error::GITEA_DST_TOKEN ontbreekt"; exit 1; fi;
+          if [ -z "$DST_REGISTRY" ] || [ -z "$DST_REPOSITORY" ]; then
+          echo "::error::GITEA_DST_REGISTRY_HOST en
+          GITEA_DST_REPOSITORY moeten zijn ingesteld op environment
+          'acc'"; exit 1; fi;
+          SRC="docker://$REGISTRY/$REPOSITORY/$IMAGE_NAME:$VER";
+          DST="docker://$DST_REGISTRY/$DST_REPOSITORY/$IMAGE_NAME:$VER";
+          skopeo copy --src-tls-verify=false --dest-tls-verify=false
+          --src-creds "$SRC_CREDS"
+          --dest-creds "$DST_CREDS" "$SRC" "$DST";
+          echo "Gekopieerd: $DST"
+
+      - name: Bump acc tag via composite
+        id: promote
+        if: steps.gate.outputs.proceed == 'true'
+        uses: ./.github/actions/bump-image-tag
+        with:
+          project: ${{ matrix.release.project }}
+          env-name: acc
+          version: ${{ env.VER }}
+          image-name: ${{ matrix.release.image }}
+          branch: ci/promote-${{ matrix.release.image }}-acc-${{ env.VER }}
+          commit-message: "ci: update ${{ matrix.release.image }} \
+            acc tag to ${{ env.VER }}"
+          pr-title: "ci: update image tag \
+            ${{ matrix.release.image }}:${{ env.VER }} to acc"
+          pr-body: Automated tag update for freshly published image
+            ${{ github.sha }}.
+          token: ${{ secrets.GH_PAT }}
+          gpg-key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
+          key-id: ${{ vars.BOT_GPG_KEYID }}
+
+  promote-prd:
+    name: Promote to prd
+    runs-on: [self-hosted]
+    needs: [publish, detect, determine-version, promote-acc]
+    environment: prd
+    if: >
+      always() &&
+      needs.promote-acc.result == 'success' &&
+      needs.detect.outputs.matrix != '' &&
+      needs.detect.outputs.matrix != '[]' &&
+      needs.determine-version.result == 'success'
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    strategy:
+      fail-fast: false
+      matrix:
+        release: ${{ fromJSON(needs.detect.outputs.matrix) }}
+    env:
+      PROJECT: ${{ matrix.release.project }}
+      IMAGE_NAME: ${{ matrix.release.image }}
+      REGISTRY: ${{ vars.GITEA_LOCAL }}
+      REPOSITORY: ${{ vars.GITEA_SOURCE_REPOSITORY }}
+      VER_MAP: ${{ needs.determine-version.outputs.versions }}
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+          fetch-depth: 0
+
+      - name: Set version
+        run: >
+          VER=$(echo "$VER_MAP" | jq -r --arg p "$PROJECT"
+          '.[$p] // empty');
+          echo "VER=$VER" >> "$GITHUB_ENV";
+          echo "Version $VER for $PROJECT";
+          [ -n "$VER" ] ||
+          { echo "::error::Lege versie voor $PROJECT"; exit 1; }
+
+      - name: Check published image exists
+        id: gate
+        run: >
+          IMAGE="$REGISTRY/$REPOSITORY/$IMAGE_NAME";
+          skopeo inspect --tls-verify=false --raw
+          --creds "$CREDS"
+          docker://$IMAGE:$VER > /dev/null 2>&1
+          && echo "proceed=true" >> "$GITHUB_OUTPUT"
+          || echo "proceed=false" >> "$GITHUB_OUTPUT"
+        env:
+          CREDS: ${{ vars.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}
+
+      - name: Copy image to prd registry
+        if: steps.gate.outputs.proceed == 'true'
+        env:
+          XDG_RUNTIME_DIR: ${{ runner.temp }}/runtime
+          SRC_CREDS: ${{ vars.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}
+          DST_CREDS: ${{ vars.GITEA_USER }}:${{ secrets.GITEA_DST_TOKEN }}
+          DST_REGISTRY: ${{ vars.GITEA_DST_REGISTRY_HOST }}
+          DST_REPOSITORY: ${{ vars.GITEA_DST_REPOSITORY }}
+          DST_TOKEN_SET: ${{ secrets.GITEA_DST_TOKEN != '' }}
+        run: >
+          mkdir -p "$XDG_RUNTIME_DIR";
+          if [ "$DST_TOKEN_SET" != "true" ]; then
+          echo "::error::GITEA_DST_TOKEN ontbreekt"; exit 1; fi;
+          if [ -z "$DST_REGISTRY" ] || [ -z "$DST_REPOSITORY" ]; then
+          echo "::error::GITEA_DST_REGISTRY_HOST en
+          GITEA_DST_REPOSITORY moeten zijn ingesteld op environment
+          'prd'"; exit 1; fi;
+          SRC="docker://$REGISTRY/$REPOSITORY/$IMAGE_NAME:$VER";
+          DST="docker://$DST_REGISTRY/$DST_REPOSITORY/$IMAGE_NAME:$VER";
+          skopeo copy --src-tls-verify=false --dest-tls-verify=false
+          --src-creds "$SRC_CREDS"
+          --dest-creds "$DST_CREDS" "$SRC" "$DST";
+          echo "Gekopieerd: $DST"
+
+      - name: Bump prd tag via composite
+        id: promote
+        if: steps.gate.outputs.proceed == 'true'
+        uses: ./.github/actions/bump-image-tag
+        with:
+          project: ${{ matrix.release.project }}
+          env-name: prd
+          version: ${{ env.VER }}
+          image-name: ${{ matrix.release.image }}
+          branch: ci/promote-${{ matrix.release.image }}-prd-${{ env.VER }}
+          commit-message: "ci: update ${{ matrix.release.image }} \
+            prd tag to ${{ env.VER }}"
+          pr-title: "ci: update image tag \
+            ${{ matrix.release.image }}:${{ env.VER }} to prd"
+          pr-body: Automated tag update for freshly published image
+            ${{ github.sha }}.
+          token: ${{ secrets.GH_PAT }}
+          gpg-key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
+          key-id: ${{ vars.BOT_GPG_KEYID }}
