@@ -53,6 +53,13 @@ inputs:
       branch (preview: ArgoCD wijst handmatig naar die branch).
     required: false
     default: 'true'
+  only-paths:
+    description: >
+      Spatie-gescheiden paden (bv. .infra). Gevuld: de branch wordt een
+      orphan-branch met ALLEEN deze paden (1 commit, geen broncode of
+      workflows). Leeg: volledige checkout + bump (CD/promote).
+    required: false
+    default: ''
   base-ref:
     description: >
       Branch waarop de bump gebaseerd wordt (bv. main). Leeg = huidige
@@ -133,6 +140,7 @@ runs:
         ENV_NAME: ${{ inputs.env-name }}
         BRANCH: ${{ inputs.branch }}
         COMMIT_MESSAGE: ${{ inputs.commit-message }}
+        ONLY_PATHS: ${{ inputs.only-paths }}
       run: >
         CHART=$(jq -r --arg p "$PROJECT"
         '.[$p].chart // empty' .github/projects.json);
@@ -145,11 +153,15 @@ runs:
         FILE=".infra/$CHART/$VALUES_FILE";
         git config user.name "gitea-actions[bot]";
         git config user.email "128380454+bergconnect@users.noreply.github.com";
-        git switch -C "$BRANCH";
         if git diff --quiet -- "$FILE"; then
         echo "Geen wijziging — sla over";
         echo "pushed=false" >> "$GITHUB_OUTPUT"; exit 0; fi;
-        git add "$FILE";
+        if [ -n "$ONLY_PATHS" ]; then
+        git branch -D "$BRANCH" > /dev/null 2>&1 || true;
+        git checkout --orphan "$BRANCH" &&
+        git rm -rf --cached -q . &&
+        git add -- $ONLY_PATHS;
+        else git switch -C "$BRANCH" && git add "$FILE"; fi;
         git commit -m "$COMMIT_MESSAGE";
         git push --force origin "$BRANCH";
         echo "pushed=true" >> "$GITHUB_OUTPUT"
