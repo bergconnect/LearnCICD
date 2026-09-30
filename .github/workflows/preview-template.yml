@@ -143,6 +143,7 @@ jobs:
           image-name: ${{ env.IMAGE_NAME }}
           branch: ci/preview-${{ env.PROJECT }}
           open-pr: 'false'
+          only-paths: .infra
           commit-message: "ci: preview ${{ env.PROJECT }} ${{ env.TAG }} to dev (branch: ${{ env.BRANCH }})"
           token: ${{ secrets.GH_PAT }}
           gpg-key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
