@@ -22,6 +22,7 @@ on:
 
 env:
   DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
+  PREVIEW_BRANCH: ci/preview
 
 permissions: {}
 
@@ -62,21 +63,20 @@ jobs:
           echo "branch=$BRANCH" >> "$GITHUB_OUTPUT";
           echo "Preview van $BRANCH voor $LIST"
 
-  preview:
-    name: Preview to dev
+  build:
+    name: Build preview image
     runs-on: [self-hosted]
     needs: [resolve]
     environment: dev
     timeout-minutes: 20
     permissions:
-      contents: write
+      contents: read
     strategy:
       fail-fast: false
       matrix:
         project: ${{ fromJSON(needs.resolve.outputs.projects) }}
     env:
       PROJECT: ${{ matrix.project }}
-      BRANCH: ${{ needs.resolve.outputs.branch }}
     steps:
       - name: Set up .NET
         uses: ./.github/actions/dotnet-setup
@@ -134,17 +134,62 @@ jobs:
           REPOSITORY: ${{ vars.GITEA_SOURCE_REPOSITORY }}
           DST_CREDS: ${{ vars.GITEA_USER }}:${{ secrets.GITEA_TOKEN }}
 
-      - name: Bump dev tag via composite
-        uses: ./.github/actions/bump-image-tag
+  publish-branch:
+    name: Publish preview branch
+    runs-on: [self-hosted]
+    needs: [resolve, build]
+    environment: dev
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Set up .NET
+        uses: ./.github/actions/dotnet-setup
         with:
-          project: ${{ env.PROJECT }}
-          env-name: dev
-          version: ${{ env.TAG }}
-          image-name: ${{ env.IMAGE_NAME }}
-          branch: ci/preview-${{ env.PROJECT }}
-          open-pr: 'false'
-          only-paths: .infra
-          commit-message: "ci: preview ${{ env.PROJECT }} ${{ env.TAG }} to dev (branch: ${{ env.BRANCH }})"
+          ref: ${{ needs.resolve.outputs.branch }}
+          fetch-depth: 0
           token: ${{ secrets.GH_PAT }}
-          gpg-key: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
-          key-id: ${{ vars.BOT_GPG_KEYID }}
+          restore-tools: 'true'
+
+      - name: Import signing key
+        env:
+          GPG_KEY: ${{ secrets.BOT_GPG_PRIVATE_KEY }}
+          KEY_ID: ${{ vars.BOT_GPG_KEYID }}
+        run: >
+          echo "$GPG_KEY" | gpg --batch --import;
+          git config user.signingkey "$KEY_ID";
+          git config commit.gpgsign true;
+          [ "$(git config commit.gpgsign)" = "true" ] ||
+          { echo "::error::gpgsign niet actief"; exit 1; };
+          [ -n "$(git config user.signingkey)" ] ||
+          { echo "::error::signingkey leeg"; exit 1; };
+          echo "Signing geconfigureerd"
+
+      - name: Bump tags and push preview branch
+        env:
+          PROJECTS: ${{ needs.resolve.outputs.projects }}
+          BRANCH: ${{ needs.resolve.outputs.branch }}
+        run: >
+          unset GITHUB_REF;
+          git config user.name "gitea-actions[bot]";
+          git config user.email "128380454+bergconnect@users.noreply.github.com";
+          SUMMARY="";
+          for P in $(echo "$PROJECTS" | jq -r '.[]'); do
+          TAG=$(cd "src/$P" && dotnet nbgv get-version -v SemVer2);
+          [[ "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+-g[0-9a-f]+$ ]] ||
+          { echo "::error::onverwachte preview-versievorm voor $P: '$TAG'";
+          exit 1; };
+          CHART=$(jq -r --arg p "$P" '.[$p].chart // empty'
+          .github/projects.json);
+          [ -n "$CHART" ] ||
+          { echo "::error::$P ontbreekt in .github/projects.json"; exit 1; };
+          export TAG;
+          yq -i '.image.tag = strenv(TAG)' ".infra/$CHART/values_dev.yaml";
+          SUMMARY="$SUMMARY $P=$TAG"; done;
+          git branch -D "$PREVIEW_BRANCH" > /dev/null 2>&1 || true;
+          git checkout --orphan "$PREVIEW_BRANCH" &&
+          git rm -rf --cached -q . &&
+          git add -- .infra;
+          git commit -m "ci: preview$SUMMARY to dev (branch: $BRANCH)";
+          git push --force origin "$PREVIEW_BRANCH";
+          echo "Preview branch $PREVIEW_BRANCH:$SUMMARY"
