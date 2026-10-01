@@ -132,3 +132,18 @@ jobs:
           do case "$r" in success|skipped) :;;
           *) echo "::error::Unsatisfied result: $r"; exit 1;; esac;
           done
+
+  guard-preview:
+    name: Guard preview branch
+    runs-on: [self-hosted]
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Fail on PRs from ci/preview
+        run: >
+          if [ "${{ github.head_ref }}" = "ci/preview" ];
+          then echo "::error::PRs vanaf ci/preview mogen nooit
+          naar main mergen"; exit 1; fi;
+          echo "Head branch '${{ github.head_ref }}'
+          is toegestaan"
